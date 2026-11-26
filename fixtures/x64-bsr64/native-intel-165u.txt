@@ -1,0 +1,280 @@
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=0 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=40000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=1 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=40000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=2 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=40000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=3 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=40000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=4 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=5 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=6 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=7 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=8 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=9 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=10 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=11 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=12 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
+encoding=48 0f bd ca (bsr %rdx,%rcx)
+cpu=13 vendor=GenuineIntel brand=Intel(R) Core(TM) Ultra 7 165U
+CPUID.1 eax=000a06a4 ecx=7ffafbff edx=bfebfbff
+CPUID.1a eax=20000002
+microcode=0x28
+example src=0000000000000000 old_dst=000000000000007f dst=000000000000007f flags=044 intel093_flags=044
+example src=0000000000000003 old_dst=000000000000007f dst=0000000000000001 flags=000 intel093_flags=004
+example src=0000000000000007 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+example src=0000000000000001 old_dst=000000000000007f dst=0000000000000000 flags=004 intel093_flags=000
+example src=0000000000000004 old_dst=000000000000007f dst=0000000000000002 flags=000 intel093_flags=000
+trials=27648 common_behavior_failures=0
+flag   Intel 093 mismatches   older-Intel flag-preservation mismatches
+CF                        0                                      13824
+PF                    13056                                      13824
+AF                        0                                      13824
+ZF                        0                                          0
+SF                        0                                      13824
+DF                        0                                          0
+OF                        0                                      13824
+PF mismatches against observed hypothesis (even popcount of MSB index, zero indexes to 0)=0
