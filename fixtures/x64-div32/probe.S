@@ -1,0 +1,15 @@
+.text
+.globl probe_div32
+.type probe_div32, @function
+probe_div32:
+    movq %rdi, %rax
+    xchgq %rsi, %rdx
+.globl probe_div32_opcode
+probe_div32_opcode:
+    .byte 0xf7, 0xf6
+    movq %rax, 0(%rcx)
+    movq %rdx, 8(%rcx)
+    movq %rsi, 16(%rcx)
+    ret
+.size probe_div32, . - probe_div32
+.section .note.GNU-stack,"",@progbits
