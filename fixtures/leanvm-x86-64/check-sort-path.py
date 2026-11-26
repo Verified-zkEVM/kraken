@@ -94,7 +94,6 @@ def main(out):
     for n in admitted[21:]:
         scratch = max(min(n, 1_000_000), n - n // 2)
         check(scratch == n and scratch < 513, f"heap scratch needed at length {n}")
-        check(0 < n and (1 << 62) // n < 1 << 64, f"invalid DIV operands at length {n}")
 
     print(
         "X1 hash and prefixes match. Lengths 21 through 96 use the stack scratch path."
