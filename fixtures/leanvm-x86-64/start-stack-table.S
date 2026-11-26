@@ -5,6 +5,13 @@
 .ifndef stack_size
 .set stack_size,   0x10000
 .endif
+.set stack_top,    (stack_base + stack_size) & -16
+.set sentinel_rbx, 0x1122334455667788
+.set sentinel_rbp, 0x2233445566778899
+.set sentinel_r12, 0x33445566778899aa
+.set sentinel_r13, 0x445566778899aabb
+.set sentinel_r14, 0x5566778899aabbcc
+.set sentinel_r15, 0x66778899aabbccdd
 
 .text
 .globl _start
@@ -57,10 +64,7 @@ _start:
     jne fail
 .endif
 
-    # The pre-call RSP is 16-byte aligned. The call writes the
-    # return address at the fixture's entry RSP, eight bytes below it.
-    mov $(stack_base + stack_size), %r13d
-    and $-16, %r13
+    mov $stack_top, %r13d
     lea -8(%r13), %rcx
     cmp $stack_base, %rcx
     jb reject_stack
@@ -81,12 +85,42 @@ _start:
 
     lea result(%rip), %rdi
     mov 0(%r12), %rsi
+    mov %r12, selected_case(%rip)
     mov %r13, %rsp
+    movabs $sentinel_rbx, %rbx
+    movabs $sentinel_rbp, %rbp
+    movabs $sentinel_r12, %r12
+    movabs $sentinel_r13, %r13
+    movabs $sentinel_r14, %r14
+    movabs $sentinel_r15, %r15
     call fixture
-    cmp %r13, %rsp
+
+    cmp $stack_top, %rsp
     jne fail
+    movabs $sentinel_rbx, %rax
+    cmp %rax, %rbx
+    jne fail
+    movabs $sentinel_rbp, %rax
+    cmp %rax, %rbp
+    jne fail
+    movabs $sentinel_r12, %rax
+    cmp %rax, %r12
+    jne fail
+    movabs $sentinel_r13, %rax
+    cmp %rax, %r13
+    jne fail
+    movabs $sentinel_r14, %rax
+    cmp %rax, %r14
+    jne fail
+    movabs $sentinel_r15, %rax
+    cmp %rax, %r15
+    jne fail
+
     lea result(%rip), %rdi
+    mov selected_case(%rip), %r12
     mov 8(%r12), %rcx
+    cmp %rcx, 0(%rdi)
+    jne fail
     cmp %rcx, 16(%rdi)
     jne fail
     mov 24(%r12), %rax
@@ -198,4 +232,5 @@ stack_table_end:
 .bss
 .balign 8
 result: .skip 32
+selected_case: .skip 8
 .section .note.GNU-stack,"",@progbits
