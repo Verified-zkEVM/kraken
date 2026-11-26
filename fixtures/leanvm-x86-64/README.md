@@ -58,8 +58,10 @@ The contract candidates assume single-threaded execution and exclusive access to
 
 GNU ld 2.42 and LLD 18.1.3 both passed the alias and slot checks, aligned allocation, word and byte zeroing, direct `memset`, and exact-fit and exhaustion cases. A direct seven-byte zeroed request exercises the byte loop. The harness starts each boundary scenario with no live block retained from an earlier one. It sets `NEXT` directly and initializes sentinel bytes as needed. The harness checks the adjacent bytes after writes.
 
-In a separate process, an alignment of `2^32` reached the ordinary allocator's 32-bit division and caused SIGFPE. That alignment falls outside `X1Alloc8`. The control calls the compiled helper directly.
+`X1Alloc8` uses alignment 8 because the scalar fixture passes 8 in RSI. In the pinned linked helper, a zero upper half of `NEXT` selects `div esi`. Every allowed cursor value satisfies that condition. The instruction takes its divisor from ESI, which is zero for an alignment of `2^32`. In a separate process, the control calls the helper with that out-of-contract alignment and observes SIGFPE.
 
 The replay observes selected final states. P3 still needs the ownership, return-state and write-footprint proofs for all admitted executions, including every prefix. P5 covers the fixture's treatment of allocation failure.
+
+**Tooling disclosure.** Codex agents generated `allocator.ld`, `start-allocator.S`, `replay-allocator.sh`, and this README section from the pinned source and disassembly. Other Codex agents reviewed those files and independently ran `replay-allocator.sh` with both linkers.
 
 The build approach and memory routines originally came from [leanVM #837](https://github.com/leanEthereum/leanVM/pull/837). The X1 sources in `src/` are available under the accompanying [leanVM MIT license](src/LICENSE-MIT).
