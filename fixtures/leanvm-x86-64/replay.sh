@@ -24,6 +24,12 @@ as --64 -o start-stack-table.o "$fixture/start-stack-table.S"
 as --64 --defsym stack_size=0x1000 -o start-small-stack-table.o "$fixture/start-stack-table.S"
 as --64 --defsym inspect_guard=1 -o start-inspect-stack-table.o "$fixture/start-stack-table.S"
 
+abi_checks=(rbx rbp r12 r13 r14 r15 rsp capacity)
+for index in "${!abi_checks[@]}"; do
+    as --64 --defsym "break_check=$index" -o "start-break-${abi_checks[index]}.o" \
+        "$fixture/start-stack-table.S"
+done
+
 expect_exit() {
     local expected=$1 actual=0
     shift
@@ -64,4 +70,11 @@ for linker in ld.bfd ld.lld; do
     expect_exit 44 "./$image" 6
     expect_exit 44 "./$image" 7
     printf '%s rejected both out-of-range lengths (exit 44)\n' "$linker"
+
+    for check in "${abi_checks[@]}"; do
+        broken_image=$linker-break-$check.elf
+        "$linker" "${flags[@]}" -o "$broken_image" "start-break-$check.o" "$object"
+        expect_exit 1 "./$broken_image" 8
+        printf '%s rejected corrupt %s (exit 1)\n' "$linker" "$check"
+    done
 done

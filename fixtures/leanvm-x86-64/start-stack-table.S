@@ -95,32 +95,54 @@ _start:
     movabs $sentinel_r15, %r15
     call fixture
 
+.ifdef break_check
+.if break_check == 0
+    mov %ebx, %ebx
+.elseif break_check == 1
+    mov %ebp, %ebp
+.elseif break_check == 2
+    mov %r12d, %r12d
+.elseif break_check == 3
+    mov %r13d, %r13d
+.elseif break_check == 4
+    mov %r14d, %r14d
+.elseif break_check == 5
+    mov %r15d, %r15d
+.elseif break_check == 6
+    sub $8, %rsp
+.elseif break_check == 7
+    incq result(%rip)
+.else
+    .error "break_check must be in 0 through 7"
+.endif
+.endif
+
     cmp $stack_top, %rsp
-    jne fail
+    jne reject_abi
     movabs $sentinel_rbx, %rax
     cmp %rax, %rbx
-    jne fail
+    jne reject_abi
     movabs $sentinel_rbp, %rax
     cmp %rax, %rbp
-    jne fail
+    jne reject_abi
     movabs $sentinel_r12, %rax
     cmp %rax, %r12
-    jne fail
+    jne reject_abi
     movabs $sentinel_r13, %rax
     cmp %rax, %r13
-    jne fail
+    jne reject_abi
     movabs $sentinel_r14, %rax
     cmp %rax, %r14
-    jne fail
+    jne reject_abi
     movabs $sentinel_r15, %rax
     cmp %rax, %r15
-    jne fail
+    jne reject_abi
 
     lea result(%rip), %rdi
     mov selected_case(%rip), %r12
     mov 8(%r12), %rcx
     cmp %rcx, 0(%rdi)
-    jne fail
+    jne reject_abi
     cmp %rcx, 16(%rdi)
     jne fail
     mov 24(%r12), %rax
@@ -141,8 +163,11 @@ reject_input:
 reject_range:
     mov $44, %edi
     jmp exit
-fail:
+reject_abi:
     mov $1, %edi
+    jmp exit
+fail:
+    mov $2, %edi
 exit:
     mov $60, %eax
     syscall
