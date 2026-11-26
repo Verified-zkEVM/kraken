@@ -20,6 +20,8 @@ struct registers {
 
 extern void probe_div32(uint64_t rax, uint64_t rdx, uint64_t rsi, struct registers *out);
 extern const unsigned char probe_div32_opcode[];
+extern void probe_div64(uint64_t rax, uint64_t rdx, uint64_t rsi, struct registers *out);
+extern const unsigned char probe_div64_opcode[];
 
 static void system_failure(const char *operation)
 {
@@ -127,21 +129,63 @@ static void check_arena_boundaries(void)
     puts("Passed 16 alignment-8 cases near both X1 arena bounds");
 }
 
-static void check_signal(int signal, siginfo_t *info, void *raw_context)
+static void expect_divide64(const char *case_name, struct registers in)
+{
+    struct registers out;
+    probe_div64(in.rax, in.rdx, in.rsi, &out);
+
+    unsigned __int128 dividend = ((unsigned __int128)in.rdx << 64) | in.rax;
+    unsigned __int128 recomposed = (unsigned __int128)out.rax * in.rsi + out.rdx;
+    if (recomposed != dividend || out.rdx >= in.rsi || out.rsi != in.rsi) {
+        fprintf(stderr,
+                "%s: input RAX=%016" PRIx64 " RDX=%016" PRIx64 " RSI=%016" PRIx64 "\n"
+                "got RAX=%016" PRIx64 " RDX=%016" PRIx64 " RSI=%016" PRIx64 "\n",
+                case_name, in.rax, in.rdx, in.rsi, out.rax, out.rdx, out.rsi);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void check_div64_results(void)
+{
+    expect_divide64("nonzero high dividend", (struct registers){.rax = 1, .rdx = 1, .rsi = 2});
+    expect_divide64("high dividend near fault",
+                    (struct registers){.rax = UINT64_MAX, .rdx = UINT64_MAX - 1, .rsi = UINT64_MAX});
+    puts("Passed 2 general div rsi cases with nonzero high dividend words");
+    for (uint64_t n = 21; n <= 96; ++n) {
+        struct registers in = {.rax = UINT64_C(1) << 62, .rdx = 0, .rsi = n};
+        expect_divide64("sort length", in);
+    }
+    puts("Passed div rsi cases for all 76 sort lengths from 21 through 96");
+}
+
+static void check_signal(const unsigned char *opcode, int signal, siginfo_t *info, void *raw_context)
 {
     const ucontext_t *context = raw_context;
     uintptr_t rip = (uintptr_t)context->uc_mcontext.gregs[REG_RIP];
-    _exit(signal == SIGFPE && info->si_code > 0 && rip == (uintptr_t)probe_div32_opcode ? 0 : 2);
+    _exit(signal == SIGFPE && info->si_code == FPE_INTDIV && rip == (uintptr_t)opcode ? 0 : 2);
 }
 
-static void expect_fault(const char *case_name, struct registers in)
+static void handle_div32_fault(int signal, siginfo_t *info, void *context)
+{
+    check_signal(probe_div32_opcode, signal, info, context);
+}
+
+static void handle_div64_fault(int signal, siginfo_t *info, void *context)
+{
+    check_signal(probe_div64_opcode, signal, info, context);
+}
+
+typedef void (*div_probe)(uint64_t, uint64_t, uint64_t, struct registers *);
+typedef void (*fault_handler)(int, siginfo_t *, void *);
+
+static void expect_fault(const char *case_name, div_probe probe, fault_handler handle, struct registers in)
 {
     pid_t child = fork();
     if (child < 0)
         system_failure("fork");
     if (child == 0) {
         struct rlimit no_core = {0, 0};
-        struct sigaction action = {.sa_sigaction = check_signal, .sa_flags = SA_SIGINFO};
+        struct sigaction action = {.sa_sigaction = handle, .sa_flags = SA_SIGINFO};
         sigset_t unblocked;
         if (setrlimit(RLIMIT_CORE, &no_core) != 0 ||
             sigemptyset(&action.sa_mask) != 0 ||
@@ -152,7 +196,7 @@ static void expect_fault(const char *case_name, struct registers in)
             _exit(3);
 
         struct registers out;
-        probe_div32(in.rax, in.rdx, in.rsi, &out);
+        probe(in.rax, in.rdx, in.rsi, &out);
         _exit(1);
     }
 
@@ -160,23 +204,35 @@ static void expect_fault(const char *case_name, struct registers in)
     if (waitpid(child, &status, 0) != child)
         system_failure("waitpid");
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        fprintf(stderr, "%s: expected SIGFPE at the DIV instruction, wait status=0x%x\n",
+        fprintf(stderr, "%s: expected FPE_INTDIV at the DIV instruction, wait status=0x%x\n",
                 case_name, (unsigned)status);
         exit(EXIT_FAILURE);
     }
-    printf("%s: observed SIGFPE at div esi\n", case_name);
+    printf("%s: observed SIGFPE (FPE_INTDIV) at the DIV instruction\n", case_name);
 }
 
 int main(void)
 {
-    if (probe_div32_opcode[0] != 0xf7 || probe_div32_opcode[1] != 0xf6) {
+    if (memcmp(probe_div32_opcode, "\xf7\xf6", 2) != 0) {
         fputs("Expected the f7 f6 encoding for div esi\n", stderr);
         return EXIT_FAILURE;
     }
+    if (memcmp(probe_div64_opcode, "\x48\xf7\xf6", 3) != 0) {
+        fputs("Expected the 48 f7 f6 encoding for div rsi\n", stderr);
+        return EXIT_FAILURE;
+    }
     puts("encoding=f7 f6 (div esi)");
+    puts("encoding=48 f7 f6 (div rsi)");
     record_cpu();
     check_general();
     check_arena_boundaries();
-    expect_fault("zero divisor", (struct registers){.rax = 1, .rdx = 0, .rsi = UINT64_C(1) << 32});
-    expect_fault("quotient overflow", (struct registers){.rax = 0, .rdx = 1, .rsi = 1});
+    check_div64_results();
+    expect_fault("div esi zero divisor", probe_div32, handle_div32_fault,
+                 (struct registers){.rax = 1, .rdx = 0, .rsi = UINT64_C(1) << 32});
+    expect_fault("div esi quotient overflow", probe_div32, handle_div32_fault,
+                 (struct registers){.rax = 0, .rdx = 1, .rsi = 1});
+    expect_fault("div rsi zero divisor", probe_div64, handle_div64_fault,
+                 (struct registers){.rax = 1, .rdx = 0, .rsi = 0});
+    expect_fault("div rsi quotient overflow", probe_div64, handle_div64_fault,
+                 (struct registers){.rax = 0, .rdx = 1, .rsi = 1});
 }
