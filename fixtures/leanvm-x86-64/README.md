@@ -11,7 +11,7 @@ Run these commands from the Kraken checkout.
 ```sh
 scratch=$(mktemp -d)
 git clone https://github.com/leanEthereum/leanVM.git "$scratch/leanVM"
-rustup toolchain install 1.96.0 --profile minimal --target x86_64-unknown-none
+rustup toolchain install 1.96.0 --profile minimal --component llvm-tools --target x86_64-unknown-none
 elan toolchain install leanprover/lean4:v4.36.0
 fixtures/leanvm-x86-64/replay.sh "$scratch/leanVM" "$scratch/replay"
 ```
@@ -24,13 +24,21 @@ The output directory must be new. For an object-only run, use `build.sh` with th
 d25682c205551c7cc367ac09fba4c97dcbaee751d4813db33c608f009bd0b275
 ```
 
-The replay produces the ELF images, input sections and relocations, program headers, and entry-stub disassembly under the output directory. All generated files stay in that directory.
+The replay uses the pinned Rust toolchain's `llvm-readobj` from `llvm-tools`. It writes the ELF images, section inventories, relocations, program headers, and entry-stub disassembly to the output directory.
+
+## Input section checks
+
+Before linking, the replay inventories every allocated section of the hash-checked X1 object and each of the eleven assembled stubs. For X1 it checks the section families used by `strict.ld`. For each stub it requires exactly `.text`, `.rodata`, empty `.data`, and `.bss`, with the expected ELF types and flags. The current build lists 281 X1 sections and four per stub in `allocated-input-sections.tsv`.
+
+Each row records the intended output section and whether linker garbage collection may discard the input section. The replay also adds an unreferenced allocated `.unexpected_alloc` section to a copy of the normal stub and requires the checker to reject it. In a separate control, both GNU ld and LLD discarded that section when linking the modified stub directly with garbage collection enabled.
+
+Codex generated `check-input-sections.py`, the pre-link checks in `replay.sh`, and this section from the pinned object, the stub outputs, and `strict.ld`.
 
 ## Stock admission image check
 
 For each stock image, the checker compares the exact bytes of the 16 instructions at `[0x4003d1, 0x400449)` in their file-backed read-execute load segment. It checks signed relative displacements for the branches, data references, and call. It rejects overlaps between the pages of any two load segments. GNU and LLVM disassembly agree on the instruction boundaries and operands in both images. [Guard proof](https://github.com/Verified-zkEVM/kraken/pull/11) · [Call setup proof](https://github.com/Verified-zkEVM/kraken/pull/12)
 
-The checker compares the pointer and length in each of the 11 file-backed case records. It checks that the guard references the table checked by the existing replay and that the writable load segment covers `selected_case` in its zero-fill range. The small-stack and inspection images run the existing layout checks.
+Only the pointer and length from each case record feed admission and call setup. The checker compares those two words across all 11 file-backed records. After the fixture returns, the native replay uses the other two words to compare the returned offsets and depth. The checker ties the guard's table reference to the checked placement. It also checks the writable zero-fill range for `selected_case`. The small-stack and inspection images run the table, GOT, and layout checks.
 
 The replay changes the range immediate, branch displacement, and case pointer in separate in-memory copies. It also tests writable code, too few file-backed code bytes, overlapping load pages, and a zero-fill range that ends before `selected_case`. Each control must fail the stock admission check at the expected condition.
 
@@ -42,13 +50,15 @@ AI disclosure. Codex wrote the stock checker, replay invocation, and this sectio
 
 Each linker builds a static non-PIE image with a read-only stack table and GOT, non-executable stack permissions, and a 4 KiB guard directly below the 64 KiB writable stack. The replay checks the live guard mapping and disjointness of the stack and arena from the ELF load pages, and checks the linked table bytes against the Lean generator.
 
+The replay checks five RIP-relative transfers through the GOT. The tail jump in `__rust_alloc_zeroed` resolves to the image's `memset`, and two calls each in `drift::sort` and `stable::quicksort` resolve to its `memcpy`. The instruction bytes and target entries must be in read-only executable load pages. Both slots must be in read-only load pages without overlapping load segments, and a separate mutation of each pointer must be rejected. The checker trusts the freshly linked images' symbol addresses reported by `nm`. Codex generated this paragraph and the checker changes from the pinned linked disassemblies and replayed both linkers.
+
 The replay exercises eight synthetic inputs, including lengths 45, 54, and 94. The single-element input `[0]` reaches the zero-source `BSR` path, and `[63]` checks the maximum shift. The stub aligns the pre-call stack pointer to 16 bytes and checks that the writable interval can hold the stack budget and the 8-byte return address that `call` pushes. After each successful call, it checks the restored stack pointer and all six System V callee-saved general-purpose registers. It also checks the offsets, depth, length, and capacity of the pinned return layout. The capacity word equals the input length for these cases. The proof must establish ownership of the returned allocation.
 
 Negative cases cover a modified entry for length 94, an undersized stack, a 97-element over-budget input, and out-of-range lengths. A fresh process serves each case. The replay stub indexes cases by the selector's ASCII offset from `0`, so `:` selects case 10. GNU ld 2.42 and LLD 18.1.3 each passed all eight cases and rejected the tested mutations and invalid inputs.
 
 Eight separate `break_check` builds use the accepted input of length 94. Each changes one value after `call` returns and before the regular checks run. Six builds clear the upper 32 bits of one saved register. The other builds subtract eight from the restored stack pointer or increment the capacity word. Each ABI rejection must exit with status 1. A failed mapping syscall or a mismatch in the checked offsets, length, or depth exits with status 2.
 
-The 16 KiB budget and all 98 entries generated by `StackTable.lean` are provisional. P6 still needs the input section and resolved-target checks and a proof of linked admission. P7 still needs a proof of the stack bound for every admitted length. The native replay records observed behavior for the concrete inputs above.
+The 16 KiB budget and all 98 entries generated by `StackTable.lean` are provisional. P6 still needs checked retained section placements and results for the remaining relocations. It must connect the checked image to the directives and host state used by the linked admission proof. P7 still needs a proof of the stack bound for every admitted length. The native replay records observed behavior for the concrete inputs above.
 
 The standalone executable installs no SIGILL handler. Linux v6.6 resets caught dispositions on `exec` and delivers a forced SIGILL for a synchronous x86 invalid opcode. For an untraced process, that path uses the default disposition even if SIGILL was blocked or ignored. P5 still needs the linked proof that its declared panic paths reach the trap. [Exec setup](https://github.com/torvalds/linux/blob/v6.6/fs/exec.c#L1371) · [Disposition reset](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L537-L557) · [x86 invalid opcode handler](https://github.com/torvalds/linux/blob/v6.6/arch/x86/kernel/traps.c#L204-L212) · [x86 trap dispatch](https://github.com/torvalds/linux/blob/v6.6/arch/x86/kernel/traps.c#L147-L176) · [Forced signal delivery](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L1324-L1368)
 

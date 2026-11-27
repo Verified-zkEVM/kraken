@@ -11,6 +11,20 @@ PAGE_SIZE = 4096
 STACK_RESERVATION = 0x10000000
 ARENA = (0x20000000, 0x78000000)
 STACK_SIZE = 0x10000
+READ_ONLY = 4
+READ_EXECUTE = 5
+READ_WRITE = 6
+ALLOC_ZEROED = "_RNvCsGIExRX8pES_7___rustc19___rust_alloc_zeroed"
+DRIFT_SORT = "_ZN4core5slice4sort6stable5drift4sort17h0dd302cc2d0979dfE"
+QUICKSORT = "_ZN4core5slice4sort6stable9quicksort9quicksort17h64a99b03eded45c6E"
+GOT_SITES = (
+    (ALLOC_ZEROED, 0x3F, b"\xff\x25", "memset"),
+    (DRIFT_SORT, 0x440, b"\xff\x15", "memcpy"),
+    (DRIFT_SORT, 0x603, b"\xff\x15", "memcpy"),
+    (QUICKSORT, 0x48E, b"\xff\x15", "memcpy"),
+    (QUICKSORT, 0x81E, b"\xff\x15", "memcpy"),
+)
+
 PROGRAM_HEADER = struct.Struct("<IIQQQQQQ")
 ADMISSION_INSTRUCTIONS = (
     (0x4003D1, "48 81 fa 62 00 00 00", None),
@@ -45,73 +59,108 @@ CASE_ARGUMENTS = (
 )
 
 
-def program_headers(data):
+
+def load_offset(loads, start, size, expected_flags, description):
+    end = start + size
+    covering = [
+        (flags, offset, vaddr, filesz)
+        for flags, offset, vaddr, filesz, _, lo, hi in loads
+        if lo < end and start < hi
+    ]
+    if len(covering) != 1:
+        raise ValueError(f"{description} must be covered by one load segment")
+    flags, offset, vaddr, filesz = covering[0]
+    if flags != expected_flags or not (vaddr <= start < end <= vaddr + filesz):
+        raise ValueError(
+            f"{description} is outside its expected file-backed load region"
+        )
+    return offset + start - vaddr
+
+
+def check_got_targets(data, symbols, loads):
+    slots = {}
+    for source, relative, opcode, target in GOT_SITES:
+        instruction = symbols[source] + relative
+        offset = load_offset(loads, instruction, 6, READ_EXECUTE, "GOT instruction")
+        actual_opcode, displacement = struct.unpack_from("<2si", data, offset)
+        if actual_opcode != opcode:
+            raise ValueError(
+                f"unexpected RIP-relative GOT instruction at {instruction:#x}"
+            )
+        slot = instruction + 6 + displacement
+        slot_offset = load_offset(loads, slot, 8, READ_ONLY, f"{target} GOT slot")
+        target_address = symbols[target]
+        load_offset(loads, target_address, 1, READ_EXECUTE, f"private {target} entry")
+        if struct.unpack_from("<Q", data, slot_offset)[0] != target_address:
+            raise ValueError(
+                f"linked {target} GOT slot does not point to its private symbol"
+            )
+        slot_location = (slot, slot_offset)
+        if slots.setdefault(target, slot_location) != slot_location:
+            raise ValueError(f"inconsistent GOT slots for {target}")
+    return slots
+
+
+def image_layout(data, stack_size):
     if (len(data) < 64 or data[:6] != b"\x7fELF\x02\x01"
             or struct.unpack_from("<HH", data, 16) != (2, 62)):
         raise ValueError("expected a little-endian x86-64 ET_EXEC image")
-    start = struct.unpack_from("<Q", data, 32)[0]
+    phoff = struct.unpack_from("<Q", data, 32)[0]
     size, count = struct.unpack_from("<HH", data, 54)
-    end = start + size * count
-    if size != PROGRAM_HEADER.size or count == 0 or not 64 <= start < end <= len(data):
+    end = phoff + size * count
+    if size != PROGRAM_HEADER.size or count == 0 or not 64 <= phoff < end <= len(data):
         raise ValueError("invalid program header table")
-    return list(PROGRAM_HEADER.iter_unpack(data[start:end]))
-
-
-def check_image(data, symbols, expected_table, stack_size):
+    headers = list(PROGRAM_HEADER.iter_unpack(data[phoff:end]))
     stack = (STACK_RESERVATION, STACK_RESERVATION + PAGE_SIZE + stack_size)
-    assert stack[1] <= ARENA[0]
-
-    start, end = symbols["stack_table"], symbols["stack_table_end"]
-    assert end - start == len(expected_table) == 8 * symbols["stack_table_len"]
+    if stack[1] > ARENA[0]:
+        raise ValueError("stack and arena overlap")
     stack_flags = []
-    table_offsets = []
-    for kind, flags, offset, vaddr, _, filesz, memsz, _ in program_headers(data):
+    loads = []
+    for kind, flags, offset, vaddr, _, filesz, memsz, _ in headers:
         if kind == 1:
-            assert memsz > 0
+            if (memsz == 0 or filesz > memsz or offset + filesz > len(data)
+                    or vaddr + memsz > 2**64 or (offset - vaddr) % PAGE_SIZE):
+                raise ValueError("invalid PT_LOAD range")
             lo = vaddr & -PAGE_SIZE
             hi = (vaddr + memsz + PAGE_SIZE - 1) & -PAGE_SIZE
             for region_start, region_end in (stack, ARENA):
-                assert hi <= region_start or region_end <= lo
-            if lo < end and start < hi:
-                assert flags == 4
-                assert vaddr <= start < end <= vaddr + filesz
-                table_offsets.append(offset + start - vaddr)
+                if lo < region_end and region_start < hi:
+                    raise ValueError("load segment overlaps the stack or arena")
+            loads.append((flags, offset, vaddr, filesz, memsz, lo, hi))
         if kind == 0x6474E551:
             stack_flags.append(flags)
-    assert stack_flags == [6]
-    assert len(table_offsets) == 1
-    table_offset = table_offsets[0]
+    if stack_flags != [READ_WRITE]:
+        raise ValueError("expected one writable non-executable stack header")
+    return phoff, headers, loads
+
+
+def check_image(data, symbols, expected_table, stack_size, *, layout=None):
+    if layout is None:
+        layout = image_layout(data, stack_size)
+    _, _, loads = layout
+    start, end = symbols["stack_table"], symbols["stack_table_end"]
+    if end - start != len(expected_table) or len(expected_table) != 8 * symbols["stack_table_len"]:
+        raise ValueError("inconsistent stack table length")
+    table_offset = load_offset(
+        loads, start, end - start, READ_ONLY, "linked stack table"
+    )
     if data[table_offset : table_offset + len(expected_table)] != expected_table:
         raise ValueError("linked stack table does not match the Lean-generated bytes")
-    return table_offset
+    return table_offset, check_got_targets(data, symbols, loads)
 
 
-def file_offset(loads, start, end, flags, region):
-    for _, prot, offset, vaddr, _, filesz, _, _ in loads:
-        if prot == flags and vaddr <= start < end <= vaddr + filesz:
-            return offset + start - vaddr
-    raise ValueError(f"{region} is outside the expected file-backed load segment")
-
-
-def check_stock_admission(data, table_offset):
-    headers = program_headers(data)
+def check_stock_admission(data, table_offset, layout):
+    _, headers, loads = layout
     if any(kind in (2, 3) for kind, *_ in headers):
         raise ValueError("expected a stock image without PT_DYNAMIC or PT_INTERP")
-    loads = [header for header in headers if header[0] == 1]
-    pages = []
-    for _, _, offset, vaddr, _, filesz, memsz, _ in loads:
-        if (memsz == 0 or filesz > memsz or offset + filesz > len(data)
-                or vaddr + memsz > 2**64 or (offset - vaddr) % PAGE_SIZE):
-            raise ValueError("invalid PT_LOAD range")
-        pages.append((vaddr & -PAGE_SIZE, (vaddr + memsz + PAGE_SIZE - 1) & -PAGE_SIZE))
-    pages.sort()
+    pages = sorted((lo, hi) for *_, lo, hi in loads)
     if any(end > start for (_, end), (start, _) in zip(pages, pages[1:])):
         raise ValueError("overlapping PT_LOAD pages")
 
     code_start, code_end = 0x4003D1, 0x400449
-    code_offset = file_offset(loads, code_start, code_end, 5, "admission code")
+    code_offset = load_offset(loads, code_start, code_end - code_start, READ_EXECUTE, "admission code")
     for target in (0x400120, 0x4004FA, 0x400501):
-        file_offset(loads, target, target + 1, 5, "admission control target")
+        load_offset(loads, target, 1, READ_EXECUTE, "admission control target")
     cursor = code_start
     for pc, encoding, target in ADMISSION_INSTRUCTIONS:
         expected = bytes.fromhex(encoding)
@@ -127,36 +176,36 @@ def check_stock_admission(data, table_offset):
     if cursor != code_end:
         raise ValueError("admission instructions do not cover the checked interval")
 
-    cases_offset = file_offset(loads, 0x403000, 0x403000 + 32 * len(CASE_ARGUMENTS), 4, "case records")
+    cases_offset = load_offset(loads, 0x403000, 32 * len(CASE_ARGUMENTS), READ_ONLY, "case records")
     for index, expected in enumerate(CASE_ARGUMENTS):
         if struct.unpack_from("<QQ", data, cases_offset + 32 * index) != expected:
             raise ValueError(f"case {index} pointer or length differs")
-    referenced_table = file_offset(loads, 0x4049F8, 0x404D08, 4, "referenced stack table")
+    referenced_table = load_offset(loads, 0x4049F8, 784, READ_ONLY, "referenced stack table")
     if (code_offset, cases_offset, referenced_table, table_offset) != (0x3D1, 0x3000, 0x49F8, 0x49F8):
         raise ValueError("unexpected stock file offsets")
-    if not any(flags == 6 and vaddr + filesz <= 0x405028 and 0x405030 <= vaddr + memsz
-               for _, flags, _, vaddr, _, filesz, memsz, _ in loads):
+    if not any(flags == READ_WRITE and vaddr + filesz <= 0x405028 and 0x405030 <= vaddr + memsz
+               for flags, _, vaddr, filesz, memsz, _, _ in loads):
         raise ValueError("selected_case is outside the writable zero-fill range")
 
 
-def check_stock_admission_controls(data, table_offset, image):
-    headers = program_headers(data)
-    phoff = struct.unpack_from("<Q", data, 32)[0]
+def check_stock_admission_controls(data, table_offset, image, layout):
+    phoff, headers, _ = layout
     rx = next(i for i, (kind, flags, _, va, _, filesz, _, _) in enumerate(headers)
-              if kind == 1 and flags == 5 and va <= 0x4003D1 < va + filesz)
+              if kind == 1 and flags == READ_EXECUTE and va <= 0x4003D1 < va + filesz)
     ro = next(i for i, (kind, flags, _, va, _, filesz, _, _) in enumerate(headers)
-              if kind == 1 and flags == 4 and va <= 0x403000 < va + filesz)
+              if kind == 1 and flags == READ_ONLY and va <= 0x403000 < va + filesz)
     rw = next(i for i, (kind, flags, _, va, _, _, memsz, _) in enumerate(headers)
-              if kind == 1 and flags == 6 and va <= 0x405028 < va + memsz)
+              if kind == 1 and flags == READ_WRITE and va <= 0x405028 < va + memsz)
     rx_offset = phoff + rx * PROGRAM_HEADER.size
     ro_offset = phoff + ro * PROGRAM_HEADER.size
     rw_offset = phoff + rw * PROGRAM_HEADER.size
+    header_end = phoff + len(headers) * PROGRAM_HEADER.size
     controls = (
         (0x3D4, b"\x63", "admission instruction bytes at 0x4003d1 differ"),
         (0x3DA, b"\x22", "admission relative target at 0x4003d8 differs"),
-        (rx_offset + 4, struct.pack("<I", 7), "admission code is outside the expected file-backed load segment"),
+        (rx_offset + 4, struct.pack("<I", 7), "admission code is outside its expected file-backed load region"),
         (rx_offset + 32, struct.pack("<Q", 0x400448 - headers[rx][3]),
-         "admission code is outside the expected file-backed load segment"),
+         "admission code is outside its expected file-backed load region"),
         (ro_offset + 16, struct.pack("<Q", 0x400000), "overlapping PT_LOAD pages"),
         (0x3000, b"\x71", "case 0 pointer or length differs"),
         (rw_offset + 40, struct.pack("<Q", 0x405028 - headers[rw][3]),
@@ -165,7 +214,8 @@ def check_stock_admission_controls(data, table_offset, image):
     for offset, replacement, expected_error in controls:
         changed = data[:offset] + replacement + data[offset + len(replacement) :]
         try:
-            check_stock_admission(changed, table_offset)
+            changed_layout = image_layout(changed, STACK_SIZE) if offset < header_end else layout
+            check_stock_admission(changed, table_offset, changed_layout)
         except ValueError as error:
             if str(error) != expected_error:
                 raise RuntimeError(f"unexpected stock admission control failure in {image}") from error
@@ -216,20 +266,47 @@ def main():
         for line in subprocess.check_output(["nm", "-n", name], text=True).splitlines():
             value, _, symbol = line.split()
             symbols[symbol] = int(value, 16)
-        table_offset = check_image(data, symbols, expected, stack_size)
+        layout = image_layout(data, stack_size)
+        table_offset, slots = check_image(data, symbols, expected, stack_size, layout=layout)
         if stock_admission and name == image:
-            check_stock_admission(data, table_offset)
+            check_stock_admission(data, table_offset, layout)
             print(f"{name}: checked stock admission bytes, targets, case arguments, and zero-fill")
-            check_stock_admission_controls(data, table_offset, name)
-        changed = bytearray(data)
-        changed[table_offset + 94 * 8] ^= 1
-        try:
-            check_image(changed, symbols, expected, stack_size)
-        except ValueError:
-            print(f"{name}: rejected changed linked table entry for n=94")
-        else:
-            raise RuntimeError("Checker accepted the mutated table")
-        print(f"{name}: read-only table matches Lean output, stack and arena are disjoint from ELF pages")
+            check_stock_admission_controls(data, table_offset, name, layout)
+        phoff, headers, _ = layout
+        header_end = phoff + len(headers) * PROGRAM_HEADER.size
+        mutations = [
+            (
+                table_offset + 94 * 8,
+                "linked table entry for n=94",
+                "linked stack table does not match the Lean-generated bytes",
+            )
+        ]
+        for target, (_, offset) in slots.items():
+            mutations.append(
+                (
+                    offset,
+                    f"{target} GOT pointer",
+                    f"linked {target} GOT slot does not point to its private symbol",
+                )
+            )
+        for offset, description, message in mutations:
+            changed = bytearray(data)
+            changed[offset] ^= 1
+            try:
+                changed_layout = layout if offset >= header_end else None
+                check_image(changed, symbols, expected, stack_size, layout=changed_layout)
+            except ValueError as error:
+                if str(error) != message:
+                    raise
+            else:
+                raise RuntimeError(f"Checker accepted the mutated {description}")
+            print(f"{name}: rejected changed {description}")
+        print(
+            f"{name}: read-only table matches Lean output, stack and arena are disjoint from ELF pages"
+        )
+        print(
+            f"{name}: five RIP-relative GOT transfers resolve to private memset and memcpy"
+        )
     check_live_guard(inspect_image)
 
 

@@ -12,6 +12,12 @@ if [[ $(uname -sm) != 'Linux x86_64' || $(getconf PAGESIZE) != 4096 ]]; then
 fi
 
 fixture=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+toolchain=${X1_RUST_TOOLCHAIN:-1.96.0}
+readobj=$(rustup run "$toolchain" rustc --print target-libdir)/../bin/llvm-readobj
+if [[ ! -x $readobj ]]; then
+    printf 'Install the llvm-tools component for %s first\n' "$toolchain" >&2
+    exit 1
+fi
 "$fixture/build.sh" "$1" "$2"
 cd -- "$2"
 object=bare/entry.o
@@ -24,11 +30,33 @@ as --64 -o start-stack-table.o "$fixture/start-stack-table.S"
 as --64 --defsym stack_size=0x1000 -o start-small-stack-table.o "$fixture/start-stack-table.S"
 as --64 --defsym inspect_guard=1 -o start-inspect-stack-table.o "$fixture/start-stack-table.S"
 
+stub_objects=(start-stack-table.o start-small-stack-table.o start-inspect-stack-table.o)
 abi_checks=(rbx rbp r12 r13 r14 r15 rsp capacity)
 for index in "${!abi_checks[@]}"; do
-    as --64 --defsym "break_check=$index" -o "start-break-${abi_checks[index]}.o" \
-        "$fixture/start-stack-table.S"
+    stub="start-break-${abi_checks[index]}.o"
+    as --64 --defsym "break_check=$index" -o "$stub" "$fixture/start-stack-table.S"
+    stub_objects+=("$stub")
 done
+
+python3 -I "$fixture/check-input-sections.py" "$readobj" "$object" "${stub_objects[@]}" \
+    > allocated-input-sections.tsv
+printf 'Inventoried allocated sections in %d link inputs before garbage collection\n' \
+    "$((1 + ${#stub_objects[@]}))"
+
+printf '\x5a' > unexpected-alloc.bin
+objcopy --add-section .unexpected_alloc=unexpected-alloc.bin \
+    --set-section-flags .unexpected_alloc=alloc,load,readonly,data,contents \
+    start-stack-table.o start-unexpected-alloc.o
+if python3 -I "$fixture/check-input-sections.py" "$readobj" "$object" start-unexpected-alloc.o \
+        > /dev/null 2> unexpected-alloc.log; then
+    printf 'Unexpected allocated section passed the input check\n' >&2
+    exit 1
+fi
+if [[ $(< unexpected-alloc.log) != "error: start-unexpected-alloc.o: unexpected allocated section '.unexpected_alloc'" ]]; then
+    cat unexpected-alloc.log >&2
+    exit 1
+fi
+printf 'Rejected an unreferenced allocated section before linking\n'
 
 expect_exit() {
     local expected=$1 actual=0
