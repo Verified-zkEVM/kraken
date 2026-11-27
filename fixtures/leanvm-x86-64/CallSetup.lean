@@ -103,22 +103,40 @@ theorem returnAddressWriteStep (e : Executable) (code : callSetupAt e) (s : Mach
 #print axioms selectedCaseWriteStep
 #print axioms returnAddressWriteStep
 
+private theorem storeKeepsByte (m : Mem 64) (start address : BitVec 64) (value : Int)
+    (outside : 8 ≤ (address - start).toNat) :
+    (m.storeInt start 8 value).get? address = m.get? address := by
+  change (m ∪ (Int.toBytes 8 value).At start)[address]? = m[address]?
+  rw [Std.ExtHashMap.getElem?_union, get?_At]
+  · rw [List.getElem?_eq_none (by simpa [Int.toBytes_length] using outside)]
+    rfl
+  · simp [Int.toBytes_length]
+
+theorem callSetupPreservesImageDataByte (s : MachineData) (input : BitVec 64) (address : BitVec 64)
+    (belowWritableLoad : address.toNat < 0x405000) :
+    (callSetupSuccessor s input).data.dmem.get? address = s.dmem.get? address := by
+  have outsideSelectedCase : 8 ≤ (address - 0x405028#64).toNat := by
+    simp only [BitVec.toNat_sub, BitVec.toNat_ofNat]
+    omega
+  have outsideReturnSlot : 8 ≤ (address - 0x10010ff8#64).toNat := by
+    simp only [BitVec.toNat_sub, BitVec.toNat_ofNat]
+    omega
+  change ((s.dmem.storeInt 0x405028#64 8 s.regs.r12.toBitVec.toInt).storeInt
+    0x10010ff8#64 8 0x400449).get? address = s.dmem.get? address
+  rw [storeKeepsByte _ _ _ _ outsideReturnSlot, storeKeepsByte _ _ _ _ outsideSelectedCase]
+
+#print axioms callSetupPreservesImageDataByte
+
 private theorem selectedStorePreservesReturnSlot (m : Mem 64) (v : Int) :
     (m.storeInt 0x405028#64 8 v).loadInt 0x10010ff8#64 8 = m.loadInt 0x10010ff8#64 8 := by
-  simp only [Mem.loadInt, Mem.loadBytes, Mem.storeInt, Mem.storeBytes]
+  simp only [Mem.loadInt, Mem.loadBytes]
   congr 2
   apply List.map_congr_left
   intro i hi
-  change (m ∪ (Int.toBytes 8 v).At 0x405028#64)[0x10010ff8#64 + BitVec.ofNat 64 i]? =
-    m[0x10010ff8#64 + BitVec.ofNat 64 i]?
-  rw [Std.ExtHashMap.getElem?_union, get?_At]
-  · have below : i < 8 := List.mem_range.mp hi
-    have beyond : 8 ≤ (0x10010ff8#64 + BitVec.ofNat 64 i - 0x405028#64).toNat := by
-      simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofNat]
-      omega
-    rw [List.getElem?_eq_none (by simpa [Int.toBytes_length] using beyond)]
-    rfl
-  · simp [Int.toBytes_length]
+  apply storeKeepsByte
+  have below : i < 8 := List.mem_range.mp hi
+  simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofNat]
+  omega
 
 theorem callSetupEventually (e : Executable) (code : callSetupAt e)
     (s : MachineData) (input : BitVec 64) (stackTop : s.regs.r13 = 0x10011000)
