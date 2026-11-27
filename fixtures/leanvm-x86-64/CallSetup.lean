@@ -40,14 +40,68 @@ private theorem advance {e : Executable} {post : MachineState → Prop} {s t : M
     Eventually (step1 e) post s :=
   .step s (· = t) step (fun _ eq => eq ▸ next)
 
+private theorem knownStepEffects {e : Executable} (code : callSetupAt e)
+    (i : Nat) (hi : i < callSetupCode.length) (s : MachineData) :
+    e.step ⟨s, callSetupCode[i].1⟩ .done =
+      letI := e.labels
+      Directives.interp [callSetupCode[i].2] s callSetupCode[i].1
+        (fun pc s' => .done ⟨s', pc⟩) := by
+  have atPC := code (callSetupCode[i].1) (callSetupCode[i].2) (List.getElem_mem hi)
+  simp only [Executable.step, atPC]
+
 private theorem knownStep {e : Executable} (code : callSetupAt e)
     (i : Nat) (hi : i < callSetupCode.length) (s : MachineData) (post : MachineState → Prop) :
     step1 e ⟨s, callSetupCode[i].1⟩ post ↔
       letI := e.labels
       (Directives.interp [callSetupCode[i].2] s callSetupCode[i].1
         (fun pc s' => .done ⟨s', pc⟩)).All post := by
-  have atPC := code (callSetupCode[i].1) (callSetupCode[i].2) (List.getElem_mem hi)
-  simp only [step1, Executable.step, atPC]
+  unfold step1
+  rw [knownStepEffects code i hi s]
+
+theorem selectedCaseWriteStep (e : Executable) (code : callSetupAt e) (s : MachineData)
+    (oldValue : Int) (mapped : s.dmem.loadInt 0x405028#64 8 = some oldValue) :
+    e.step ⟨s, 0x4003fe⟩ .done =
+      .require_exec_access ⟨0x4003fe, 0x400405⟩ (fun () =>
+        .require_write_access ⟨0x405028, 0x405030⟩ (fun () =>
+          .done ⟨{ s with dmem := s.dmem.storeInt 0x405028#64 8 s.regs.r12.toBitVec.toInt },
+            0x400405⟩)) := by
+  change e.step ⟨s, callSetupCode[2].1⟩ .done = _
+  rw [knownStepEffects code 2 (by decide) s]
+  simp only [callSetupCode, List.getElem_cons_succ, List.getElem_cons_zero,
+    Directives.interp, Directive.interp, Instr.interp, Operation.interp, Operand.interp,
+    RegOrMem.interp, AddrExpr.interp, ConstExpr.interp, MachineData.set, MachineData.store]
+  have address : BitVec.zeroExtend 64 (BitVec.ofInt Width.W64.bits
+      (((0x4003fe : Int64) + Int64.ofNat 7).toInt + 0 + (0x4c23 : Int64).toInt)) =
+        0x405028#64 := by decide
+  have source : s.regs.get (.low .r12 .W64) = s.regs.r12.toBitVec := by
+    simp [Reg64s.get, Reg64s.get64, Reg.base, Reg.offset, BitVec.take, BitVec.drop]
+  rw [address, source]
+  simp only [Width.bytes, mapped]
+  rfl
+
+theorem returnAddressWriteStep (e : Executable) (code : callSetupAt e) (s : MachineData)
+    (stackTop : s.regs.rsp = 0x10011000)
+    (oldValue : Int) (mapped : s.dmem.loadInt 0x10010ff8#64 8 = some oldValue) :
+    e.step ⟨s, 0x400444⟩ .done =
+      .require_exec_access ⟨0x400444, 0x400449⟩ (fun () =>
+        .require_write_access ⟨0x10010ff8, 0x10011000⟩ (fun () =>
+          .done ⟨{ s with
+            regs := { s.regs with rsp := 0x10010ff8 }
+            dmem := s.dmem.storeInt 0x10010ff8#64 8 0x400449 }, 0x400120⟩)) := by
+  change e.step ⟨s, callSetupCode[10].1⟩ .done = _
+  rw [knownStepEffects code 10 (by decide) s]
+  simp only [callSetupCode, List.getElem_cons_succ, List.getElem_cons_zero,
+    Directives.interp, Directive.interp, Instr.interp, Operation.interp, RelRegOrMem.interp,
+    ConstExpr.interp, MachineData.store]
+  have entryStack : s.regs.get64 .rsp - Width.W64.bytesv = 0x10010ff8#64 := by
+    change s.regs.rsp.toBitVec - 8#64 = 0x10010ff8#64
+    rw [stackTop]
+    decide
+  simp only [entryStack, Width.bytes, mapped]
+  rfl
+
+#print axioms selectedCaseWriteStep
+#print axioms returnAddressWriteStep
 
 private theorem selectedStorePreservesReturnSlot (m : Mem 64) (v : Int) :
     (m.storeInt 0x405028#64 8 v).loadInt 0x10010ff8#64 8 = m.loadInt 0x10010ff8#64 8 := by
@@ -98,19 +152,8 @@ theorem callSetupEventually (e : Executable) (code : callSetupAt e)
     rfl
   let selected := {args with dmem := s.dmem.storeInt 0x405028#64 8 s.regs.r12.toBitVec.toInt}
   refine advance (t := ⟨selected, 0x400405⟩) ?_ ?_
-  · apply (knownStep code 2 (by decide) args _).mpr
-    simp only [callSetupCode, List.getElem_cons_succ, List.getElem_cons_zero,
-      Directives.interp, Directive.interp, Instr.interp, Operation.interp, Operand.interp,
-      RegOrMem.interp, AddrExpr.interp, ConstExpr.interp, Effects.All,
-      MachineData.set, MachineData.store, Effects.All_require_write_access]
-    have mapped : args.dmem.loadInt
-        (BitVec.zeroExtend 64 (BitVec.ofInt Width.W64.bits
-          (((0x4003fe : Int64) + Int64.ofNat 7).toInt + 0 + (0x4c23 : Int64).toInt)))
-        Width.W64.bytes = some savedCase := selectedMapped
-    have source : args.regs.get (.low .r12 .W64) = s.regs.r12.toBitVec := by
-      change s.regs.get (.low .r12 .W64) = s.regs.r12.toBitVec
-      simp [Reg64s.get, Reg64s.get64, Reg.base, Reg.offset, BitVec.take, BitVec.drop]
-    rw [mapped, source]
+  · unfold step1
+    rw [selectedCaseWriteStep e code args savedCase selectedMapped]
     rfl
   let switched := {selected with regs := { selected.regs with rsp := 0x10011000 } }
   refine advance (t := ⟨switched, 0x400408⟩) ?_ ?_
@@ -139,17 +182,12 @@ theorem callSetupEventually (e : Executable) (code : callSetupAt e)
   refine advance (t := ⟨save15, 0x400444⟩) ?_ ?_
   · exact (knownStep code 9 (by decide) save14 _).mpr rfl
   refine advance (t := callSetupSuccessor s input) ?_ continueFrom
-  apply (knownStep code 10 (by decide) save15 _).mpr
-  simp only [callSetupCode, List.getElem_cons_succ, List.getElem_cons_zero,
-      Directives.interp, Directive.interp, Instr.interp, Operation.interp, RelRegOrMem.interp,
-      ConstExpr.interp, Effects.All, MachineData.store, Effects.All_require_write_access]
   have stillMapped : save15.dmem.loadInt 0x10010ff8#64 8 = some ra := by
     change (s.dmem.storeInt 0x405028#64 8 s.regs.r12.toBitVec.toInt).loadInt 0x10010ff8#64 8 = some ra
     rw [selectedStorePreservesReturnSlot, retMapped]
-  have entryStack : save15.regs.get64 .rsp - Width.W64.bytesv = 0x10010ff8#64 := by
-    change (0x10011000#64 - 8#64) = 0x10010ff8#64
-    decide
-  simp only [entryStack, Width.bytes, stillMapped]
+  have switchedStack : save15.regs.rsp = 0x10011000 := rfl
+  unfold step1
+  rw [returnAddressWriteStep e code save15 switchedStack ra stillMapped]
   rfl
 
 #print axioms callSetupEventually
