@@ -17,3 +17,16 @@ lean --root=fixtures/leanvm-x86-64 -o "$proof_build/StackTable.olean" fixtures/l
 lake env bash -c 'export LEAN_PATH="$1:$LEAN_PATH"
   exec lean -DautoImplicit=false -DrelaxedAutoImplicit=false fixtures/leanvm-x86-64/AdmissionGuards.lean' _ "$proof_build"
 ```
+
+## Replay the admission proof suite
+
+Install the Lean pin before running the suite. Run `replay-admission.sh` from any directory. With both sibling sources beside the script, omit the arguments. Otherwise pass the local `CallSetup.lean` and `TableStateBridge.lean` paths in that order. Relative paths refer to the directory that invokes the script. [Call-setup proof at 6fd89387](https://github.com/Verified-zkEVM/kraken/blob/6fd89387ffa912142619b49d70bb961684f3e8b8/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at 54ab9b71](https://github.com/Verified-zkEVM/kraken/blob/54ab9b716c3fe83a638069f33563ffb4a06d4ab5/fixtures/leanvm-x86-64/TableStateBridge.lean)
+
+```sh
+/path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh \
+  /path/to/CallSetup.lean /path/to/TableStateBridge.lean
+```
+
+The script builds Kraken's parser and semantics locally. It compiles and checks the four proof modules in a temporary directory, then checks the axiom dependencies of the public theorem declarations. The check requires all three entry points to be theorems and rejects public axiom declarations in their modules. It removes the temporary files on exit. Lake keeps its usual build output in the Kraken checkout.
+
+AI disclosure. Codex wrote the replay script and this section from the three proof replays. It tested the local inputs and the axiom check.
