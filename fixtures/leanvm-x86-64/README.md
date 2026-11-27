@@ -32,6 +32,24 @@ Before linking, the replay inventories every allocated section of the hash-check
 
 Each row records the intended output section and whether linker garbage collection may discard the input section. The replay also adds an unreferenced allocated `.unexpected_alloc` section to a copy of the normal stub and requires the checker to reject it. In a separate control, both GNU ld and LLD discarded that section when linking the modified stub directly with garbage collection enabled.
 
+Run the control from the Kraken checkout after the replay. It writes separate ELF files, checks that each omits `.unexpected_alloc`, and runs the 94-element case in each image.
+
+```sh
+(
+    set -eu
+    fixture="$PWD/fixtures/leanvm-x86-64"
+    cd "$scratch/replay"
+    for linker in ld.bfd ld.lld; do
+        image="$linker-orphan-control.elf"
+        "$linker" -static -no-pie --gc-sections --no-relax --orphan-handling=error \
+            -T "$fixture/strict.ld" -o "$image" start-unexpected-alloc.o bare/entry.o
+        sections=$(readelf -SW "$image")
+        [[ $sections != *'.unexpected_alloc'* ]]
+        timeout 10s "./$image" 8
+    done
+)
+```
+
 Codex generated `check-input-sections.py`, the pre-link checks in `replay.sh`, and this section from the pinned object, the stub outputs, and `strict.ld`.
 
 ## Evidence and proof scope
