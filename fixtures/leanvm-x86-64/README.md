@@ -26,6 +26,18 @@ d25682c205551c7cc367ac09fba4c97dcbaee751d4813db33c608f009bd0b275
 
 The replay produces the ELF images, input sections and relocations, program headers, and entry-stub disassembly under the output directory. All generated files stay in that directory.
 
+## Stock admission image check
+
+For each stock image, the checker compares the exact bytes of the 16 instructions at `[0x4003d1, 0x400449)` in their file-backed read-execute load segment. It checks signed relative displacements for the branches, data references, and call. It rejects overlaps between the pages of any two load segments. GNU and LLVM disassembly agree on the instruction boundaries and operands in both images. [Guard proof](https://github.com/Verified-zkEVM/kraken/pull/11) · [Call setup proof](https://github.com/Verified-zkEVM/kraken/pull/12)
+
+The checker compares the pointer and length in each of the 11 file-backed case records. It checks that the guard references the table checked by the existing replay and that the writable load segment covers `selected_case` in its zero-fill range. The small-stack and inspection images run the existing layout checks.
+
+The replay changes the range immediate, branch displacement, and case pointer in separate in-memory copies. It also tests writable code, too few file-backed code bytes, overlapping load pages, and a zero-fill range that ends before `selected_case`. Each control must fail the stock admission check at the expected condition.
+
+This check supplies ELF bytes and load-segment facts. The Lean proofs still need a connection from those bytes to Kraken's typed directives. The host argument must establish the mappings and initial byte values used at runtime, including the writable return slot supplied by the stub.
+
+AI disclosure. Codex wrote the stock checker, replay invocation, and this section from the stock ELF headers and independent GNU and LLVM disassembly.
+
 ## Evidence and proof scope
 
 Each linker builds a static non-PIE image with a read-only stack table and GOT, non-executable stack permissions, and a 4 KiB guard directly below the 64 KiB writable stack. The replay checks the live guard mapping and disjointness of the stack and arena from the ELF load pages, and checks the linked table bytes against the Lean generator.
