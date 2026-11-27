@@ -35,3 +35,19 @@ The script checks the SHA-256 digests of the temporary source copies before comp
 The source hashes record the review baseline. When a proof source changes, update its hash in the same reviewed change. This replay checks the pinned sources and their axiom dependencies. Statement review and `lake comparator` replay are separate checks for the linked-code claim.
 
 AI disclosure. Codex wrote the replay script and this section from the proof replays and reviewed source revisions. It added the stock rows, file reader, and placement lemmas from the image checks and existing proofs, and compared the Lean byte list with both linked images.
+
+## Replay the instruction encodings
+
+Run the suite with `--encoding` to print the 16 modeled directives with Kraken's AT&T printer and assemble them with GNU x86 binutils. Binutils 2.42 passed the replay. This follows the printer and assembler comparison used for leanVM #837. [Round-trip precedent](https://github.com/leanEthereum/leanVM/blob/df4acb9ce90c102d0019f145b4a9399abfee8e82/formal/native/rustc/ingest/faithful.sh#L25-L42)
+
+```sh
+/path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh --encoding
+```
+
+The harness gives each printed CMP immediate a forward `.set` name so GNU `as` preserves the stock immediate width. It writes the printed CALL displacement relative to the label immediately after the instruction. The two Jcc labels have their decoded stock offsets. The RIP-relative data operands go directly from the printer to the assembler.
+
+The replay checks each instruction's start and size, both branch label addresses, and all 120 bytes. It rejects any remaining relocation. A control changes the first modeled CMP immediate from 98 to 99 before printing and checks that only the first row differs.
+
+This comparison checks the curated byte-to-directive pairs through Kraken's printer, the assembler syntax adjustments, and GNU binutils. The Lean proofs still require the typed placements and labels recorded in `StockAdmissionPlacement`. The linked claim also requires the ELF byte and load-permission checks.
+
+AI disclosure. Codex wrote `AdmissionEncodingReplay.lean`, the `--encoding` runner changes, and this section from the curated stock rows, the assembly tools, and #837's comparison. It ran the byte replay and the model operand control.

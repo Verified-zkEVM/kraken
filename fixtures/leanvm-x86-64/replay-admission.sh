@@ -5,8 +5,12 @@ unset CDPATH
 fixture=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo=$(cd -- "$fixture/../.." && pwd -P)
 
-if (($# != 0)); then
-    printf 'Usage: %s\n' "$0" >&2
+if (($# == 0)); then
+    check_encoding=0
+elif [[ $# == 1 && $1 == --encoding ]]; then
+    check_encoding=1
+else
+    printf 'Usage: %s [--encoding]\n' "$0" >&2
     exit 2
 fi
 
@@ -27,6 +31,15 @@ SHA256
         exit 1
     fi
 )
+if ((check_encoding)); then
+    cp -- "$fixture/AdmissionEncodingReplay.lean" "$proof_build/"
+    (
+        cd -- "$proof_build"
+        sha256sum --check --strict <<'SHA256'
+16cbcc72708a05a02df74dd3314741d9b0293bc0584d28440f456a4c2b1b4a84  AdmissionEncodingReplay.lean
+SHA256
+    )
+fi
 
 cd -- "$repo"
 expected_pin=leanprover/lean4:nightly-2026-09-21
@@ -101,7 +114,11 @@ run_cmd do
 LEAN
 
 unset LEAN_PATH LEAN_SRC_PATH
-"$lake_cmd" --no-cache build Kraken.X64.OmniSemantics Kraken.X64.Parser
+targets=(Kraken.X64.OmniSemantics Kraken.X64.Parser)
+if ((check_encoding)); then
+    targets+=(Kraken.X64.PrintATT)
+fi
+"$lake_cmd" --no-cache build "${targets[@]}"
 "$lake_cmd" env bash -eu -c '
     proof_build=$1
     lean_cmd=$2
@@ -111,4 +128,7 @@ unset LEAN_PATH LEAN_SRC_PATH
         "$lean_cmd" "${options[@]}" -o "$proof_build/$module.olean" "$proof_build/$module.lean"
     done
     "$lean_cmd" "${options[@]}" "$proof_build/ReplayAxioms.lean"
-' _ "$proof_build" "$lean_cmd"
+    if [[ $3 == 1 ]]; then
+        TMPDIR="$proof_build" "$lean_cmd" "${options[@]}" "$proof_build/AdmissionEncodingReplay.lean"
+    fi
+' _ "$proof_build" "$lean_cmd" "$check_encoding"
