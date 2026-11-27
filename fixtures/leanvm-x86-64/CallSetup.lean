@@ -58,6 +58,31 @@ private theorem knownStep {e : Executable} (code : callSetupAt e)
   unfold step1
   rw [knownStepEffects code i hi s]
 
+
+theorem caseInputReadStep (e : Executable) (code : callSetupAt e) (s : MachineData)
+    (input : BitVec 64) (read : s.dmem.loadInt s.regs.r12.toBitVec 8 = some input.unsigned) :
+    e.step ⟨s, 0x4003fa⟩ .done =
+      .require_exec_access ⟨0x4003fa, 0x4003fe⟩ (fun () =>
+        require_access .require_read_access s.regs.r12.toBitVec 8 (fun () =>
+          .done ⟨{ s with regs := { s.regs with rsi := UInt64.ofBitVec input } }, 0x4003fe⟩)) := by
+  change e.step ⟨s, callSetupCode[1].1⟩ .done = _
+  rw [knownStepEffects code 1 (by decide) s]
+  simp only [callSetupCode, List.getElem_cons_succ, List.getElem_cons_zero,
+    Directives.interp, Directive.interp, Instr.interp, Operation.interp, Operand.interp,
+    RegOrMem.interp, AddrExpr.interp, ConstExpr.interp, MachineData.load]
+  simp only [Width.bits, Width.bytes, Reg64s.get64, BitVec.toAddressSize, AddressSize.address_size,
+    BitVec.signed, BitVec.zeroExtend_eq_setWidth, BitVec.setWidth_eq, Int.add_zero]
+  have zero : (0 : Int64).toInt = 0 := by decide
+  rw [zero, Int.add_zero, BitVec.ofInt_toInt]
+  simp only [BitVec.take, BitVec.extractLsb'_eq_self]
+  rw [read]
+  have decode : BitVec.ofInt 64 input.unsigned = input := by
+    rw [BitVec.unsigned, BitVec.ofInt_natCast, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+  simp only [decode]
+  rfl
+
+#print axioms caseInputReadStep
+
 theorem selectedCaseWriteStep (e : Executable) (code : callSetupAt e) (s : MachineData)
     (oldValue : Int) (mapped : s.dmem.loadInt 0x405028#64 8 = some oldValue) :
     e.step ⟨s, 0x4003fe⟩ .done =
@@ -152,21 +177,9 @@ theorem callSetupEventually (e : Executable) (code : callSetupAt e)
   · exact (knownStep code 0 (by decide) s _).mpr rfl
   let args := { rd with regs := { rd.regs with rsi := UInt64.ofBitVec input } }
   refine advance (t := ⟨args, 0x4003fe⟩) ?_ ?_
-  · apply (knownStep code 1 (by decide) rd _).mpr
-    simp only [callSetupCode, List.getElem_cons_succ, List.getElem_cons_zero,
-      Directives.interp, Directive.interp, Instr.interp, Operation.interp, Operand.interp,
-      RegOrMem.interp, AddrExpr.interp, ConstExpr.interp, Effects.All,
-      MachineData.load, Effects.All_require_read_access]
-    simp only [Width.bits, Width.bytes, Reg64s.get64, BitVec.toAddressSize, AddressSize.address_size,
-      BitVec.signed, BitVec.zeroExtend_eq_setWidth, BitVec.setWidth_eq, Int.add_zero]
-    have zero : (0 : Int64).toInt = 0 := by decide
-    rw [zero, Int.add_zero, BitVec.ofInt_toInt]
-    simp only [BitVec.take, BitVec.extractLsb'_eq_self]
-    have read : rd.dmem.loadInt rd.regs.r12.toBitVec 8 = some input.unsigned := caseRead
-    have decode : BitVec.ofInt 64 input.unsigned = input := by
-      rw [BitVec.unsigned, BitVec.ofInt_natCast, BitVec.ofNat_toNat, BitVec.setWidth_eq]
-    rw [read]
-    simp only [decode]
+  · unfold step1
+    rw [caseInputReadStep e code rd input caseRead]
+    simp only [Effects.All, Effects.All_require_read_access]
     rfl
   let selected := {args with dmem := s.dmem.storeInt 0x405028#64 8 s.regs.r12.toBitVec.toInt}
   refine advance (t := ⟨selected, 0x400405⟩) ?_ ?_
