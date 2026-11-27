@@ -92,8 +92,23 @@ private def replayAdmissionEncoding : IO Unit := IO.FS.withTempDir fun directory
   let changed ← assembleRows directory (← withChangedRangeImmediate stockAdmissionPlan)
   unless changed != assembled && changed.drop rangeCmp.size == assembled.drop rangeCmp.size do
     throw (IO.userError "The changed range CMP operand must change only the first row")
+
+  let moveIndex := 8
+  let some move := stockAdmissionPlan[moveIndex]? | throw (IO.userError "Missing stock stack MOV")
+  let .instr (.regular aw .W64 (.mov (.reg (.low .rsp .W64)) source)) := move.instruction.directive
+    | throw (IO.userError "Expected the stock MOV into RSP")
+  let directive := .instr (.regular aw .W64 (.mov (.reg (.low .rbp .W64)) source))
+  let changedMove := { move with instruction := { move.instruction with directive } }
+  let moved ← assembleRows directory (stockAdmissionPlan.set moveIndex changedMove)
+  let start := sectionOffset move.pc - 0x3d1
+  let stop := start + move.instruction.size
+  unless moved != stockAdmissionBytes && moved.take start == assembled.take start &&
+      moved.drop stop == assembled.drop stop do
+    throw (IO.userError "The changed stack MOV destination must change only its instruction row")
+
   IO.println "All 16 printed instructions match the stock bytes and boundaries."
   IO.println "The changed range CMP operand differs from the stock bytes."
+  IO.println "The changed stack MOV destination differs from the stock bytes."
 
 #eval replayAdmissionEncoding
 

@@ -46,8 +46,8 @@ Run the suite with `--encoding` to print the 16 modeled directives with Kraken's
 
 The harness gives each printed CMP immediate a forward `.set` name so GNU `as` preserves the stock immediate width. It writes the printed CALL displacement relative to the label immediately after the instruction. The two Jcc labels have their decoded stock offsets. The RIP-relative data operands go directly from the printer to the assembler.
 
-The replay checks each instruction's start and size, both branch label addresses, and all 120 bytes. It rejects any remaining relocation. A control changes the first modeled CMP immediate from 98 to 99 before printing and checks that only the first row differs.
+The replay checks each instruction's start and size, both branch label addresses, and all 120 bytes. It rejects any remaining relocation. Before printing, one control changes the first modeled CMP immediate from 98 to 99. Another changes the destination of the modeled `movq %r13, %rsp` to `%rbp`. Each control checks that only the changed instruction's bytes differ.
 
 This comparison checks the curated byte-to-directive pairs through Kraken's printer, the assembler syntax adjustments, and GNU binutils. The Lean proofs still require the typed placements and labels recorded in `StockAdmissionPlacement`. The linked claim also requires the ELF byte and load-permission checks.
 
-AI disclosure. Codex wrote `AdmissionEncodingReplay.lean`, the `--encoding` runner changes, and this section from the curated stock rows, the assembly tools, and #837's comparison. It ran the byte replay and the model operand control.
+AI disclosure. Codex wrote `AdmissionEncodingReplay.lean`, the `--encoding` runner changes, and this section from the curated stock rows, the assembly tools, and #837's comparison. It ran the byte replay and both model operand controls.

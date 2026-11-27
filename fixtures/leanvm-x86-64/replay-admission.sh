@@ -36,7 +36,7 @@ if ((check_encoding)); then
     (
         cd -- "$proof_build"
         sha256sum --check --strict <<'SHA256'
-16cbcc72708a05a02df74dd3314741d9b0293bc0584d28440f456a4c2b1b4a84  AdmissionEncodingReplay.lean
+87ad25e2bf72dd5495fe2cf691a0a622eeada21d7cad13f29845319d1bf979a0  AdmissionEncodingReplay.lean
 SHA256
     )
 fi
