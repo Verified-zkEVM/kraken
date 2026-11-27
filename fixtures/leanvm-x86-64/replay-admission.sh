@@ -5,35 +5,27 @@ unset CDPATH
 fixture=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo=$(cd -- "$fixture/../.." && pwd -P)
 
-proof_source() {
-    local source=$1
-    local module=$2
-    if [[ ${source##*/} != "$module.lean" || ! -f $source || ! -r $source ]]; then
-        printf 'Expected a readable %s.lean: %s\n' "$module" "$source" >&2
-        return 1
+if (($# != 0)); then
+    printf 'Usage: %s\n' "$0" >&2
+    exit 2
+fi
+
+proof_build=$(mktemp -d)
+proof_build=$(cd -- "$proof_build" && pwd -P)
+trap 'rm -rf -- "$proof_build"' EXIT
+cp -- "$fixture"/{StackTable,AdmissionGuards,TableStateBridge,CallSetup}.lean "$proof_build/"
+(
+    cd -- "$proof_build"
+    if ! sha256sum --check --strict <<'SHA256'; then
+f78f585ebe895e06f2e2d1c0d146c62f66aad921ec3ae193de00f09a1c38b192  StackTable.lean
+732424ef4a7806fdb1e7b554ded4e48b509c697ed48de88b2cad897b824a707f  AdmissionGuards.lean
+6752a6f118bb8bc19159e28cf986db370a02070c57bea8639bfd3edb235a2a7f  TableStateBridge.lean
+407646f2749c65fc8a8c898d73d4af38031e77482e88ec8404e9bcbdbd9dc96e  CallSetup.lean
+SHA256
+        printf 'Admission replay requires the pinned fixture sources.\n' >&2
+        exit 1
     fi
-    local directory
-    directory=$(cd -- "$(dirname -- "$source")" && pwd -P)
-    printf '%s/%s.lean\n' "$directory" "$module"
-}
-
-case $# in
-    0)
-        call_source=$fixture/CallSetup.lean
-        table_source=$fixture/TableStateBridge.lean
-        ;;
-    2)
-        call_source=$1
-        table_source=$2
-        ;;
-    *)
-        printf 'Usage: %s [CALL_SETUP.lean TABLE_STATE_BRIDGE.lean]\n' "$0" >&2
-        exit 2
-        ;;
-esac
-
-call_source=$(proof_source "$call_source" CallSetup)
-table_source=$(proof_source "$table_source" TableStateBridge)
+)
 
 cd -- "$repo"
 expected_pin=leanprover/lean4:nightly-2026-09-21
@@ -73,10 +65,6 @@ if [[ $version != *"commit $expected_commit,"* ]]; then
     printf 'Expected Lean %s (%s)\nFound: %s\n' "$expected_pin" "$expected_commit" "$version" >&2
     exit 1
 fi
-
-proof_build=$(mktemp -d)
-trap 'rm -rf -- "$proof_build"' EXIT
-cp -- "$fixture/StackTable.lean" "$fixture/AdmissionGuards.lean" "$call_source" "$table_source" "$proof_build/"
 
 cat > "$proof_build/ReplayAxioms.lean" <<'LEAN'
 import Lean
