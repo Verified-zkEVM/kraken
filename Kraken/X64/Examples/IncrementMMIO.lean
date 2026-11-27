@@ -96,6 +96,7 @@ def handleEffects (ds : IncrementerState) (es : Effects)
   | .unimplemented msg => .error msg
   | .resolve_label l _ => .error s!"Unresolved label {l}"
   | .gp_unaligned addr w => .error s!"#GP: Memory op at {repr addr} did not have mandatory alignment of {w}"
+  | .divide_error atFault => .error s!"#DE at {atFault.pc}"
   | .require_read_access _ cont => handleEffects ds (cont ()) ok
   | .require_write_access _ cont => handleEffects ds (cont ()) ok
   | .require_exec_access _ cont => handleEffects ds (cont ()) ok

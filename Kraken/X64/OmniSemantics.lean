@@ -20,6 +20,7 @@ open Kraken (Layout WellFormedLayout)
     | .some a => (k a).All post
     | .none => False
   | .gp_unaligned .. => False
+  | .divide_error _ => False
   | .nonmem_load .. => False
   | .nonmem_store .. => False
   | @Effects.undefined α _ cont => ∀ v: α, (cont v).All post
@@ -144,7 +145,8 @@ theorem Effects.All_mono_labels {L₁ L₂ : Labels} (hL : L₁ ⊆ L₂)
     {post : MachineState → Prop} (e : Effects)
     (h : @Effects.All L₁ post e) : @Effects.All L₂ post e := by
   match e with
-  | .done _ | .unimplemented _ | .gp_unaligned .. | .nonmem_load .. | .nonmem_store .. => exact h
+  | .done _ | .unimplemented _ | .gp_unaligned .. | .divide_error _
+  | .nonmem_load .. | .nonmem_store .. => exact h
   | .resolve_label lbl k =>
     simp only [Effects.All_resolve_label] at h ⊢
     cases hlbl : L₁.label? lbl <;> rw [hlbl] at h

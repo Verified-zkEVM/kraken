@@ -95,6 +95,7 @@ def operation {w} (aw : Width) (op : Operation w) : String :=
   | .sbb d x => two "sbb" (operand aw x) (rm aw d)
   | .cmp a b => two "cmp" (operand aw b) (rm aw a)
   | .mul x => one "mul" (rm aw x)
+  | .div x => one "div" (reg x)
   | .mulx hi lo x => s!"mulx {rm aw x}, {reg lo}, {reg hi}"
   | .imul1 x => one "imul" (rm aw x)
   | .imul none a b => two "imul" (operand aw b) (rm aw a)

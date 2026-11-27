@@ -5,6 +5,7 @@ public import Kraken.Layout
 public import Kraken.Mem
 meta import Kraken.Mem
 public import Kraken.X64.Syntax
+public import Kraken.X64.UnsignedDiv
 meta import Kraken.X64.Syntax
 public import Lean.ToExpr
 meta import Lean.Elab.Deriving.ToExpr
@@ -380,6 +381,7 @@ inductive Effects
   | unimplemented (msg : String)
   | resolve_label (lbl : Label) (k : Int64 → Effects)
   | gp_unaligned (addr : BitVec 64) (w : Nat)
+  | divide_error (atFault : MachineState)
   -- loads and stores *outside* the data memory, eg. MMIO, might still affect the data memory:
   -- for instance, MMIO reads/writes at certain device register addresses might change what
   -- data memory the process logically owns vs what memory is owned by devices
@@ -777,6 +779,18 @@ set_option maxHeartbeats 1000000
       else (s.setReg (.low .rax w) v).setReg (.low .rdx w) (.ofInt _ (vn >>> w.bits))
     undefined (λ sf => undefined (λ zf => undefined (λ af => undefined (λ pf =>
     next { s with status := { cf := v.unsigned != vn, pf, af, zf, sf, of := v.unsigned != vn }})))))
+  | .div src =>
+    if w == .W32 || w == .W64 then
+      let low := s.regs.get (Reg.low .rax w)
+      let high := s.regs.get (Reg.low .rdx w)
+      let divisor := s.regs.get src
+      match X64.unsignedDiv high low divisor with
+      | none => .divide_error ⟨s, p.lower⟩
+      | some (quotient, remainder) =>
+        let s := (s.setReg (.low .rax w) quotient).setReg (.low .rdx w) remainder
+        undefined fun status => next { s with status }
+    else
+      .unimplemented "DIV requires a 32- or 64-bit register"
   | .mulx r_hi r_lo src1 =>
     src1.interp s p (fun a s =>
     let b := s.regs.get (.low .rdx w)
@@ -1110,6 +1124,7 @@ where
       | .some a => handleEffects (k a)
       | .none => .error s!"unresolved label: {lbl}"
     | .gp_unaligned addr w => .error s!"#GP: Memory op at {repr addr} did not have mandatory alignment of {w}"
+    | .divide_error atFault => .error s!"#DE at {atFault.pc}"
     | .require_read_access _ ok => handleEffects (ok ())
     | .require_write_access _ ok => handleEffects (ok ())
     | .require_exec_access _ ok => handleEffects (ok ())

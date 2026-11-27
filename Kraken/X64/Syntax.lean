@@ -211,6 +211,7 @@ inductive Operation (w : Width)
   | sbb  (_ : Dst w) (src : Operand w)
   | cmp  (a : RegOrMem w) (b : Operand w)
   | mul  (src : RegOrMem w)
+  | div  (src : Reg w)
   | mulx (hi lo : Reg w) (src : RegOrMem w) -- {_ : 32 <= w.bits}
   -- imul1 and imul collectively describe variants of the same
   -- syntax level `imul` instruction, where imul1 is the 1-operand case
