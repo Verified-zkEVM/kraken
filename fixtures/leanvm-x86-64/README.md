@@ -61,13 +61,15 @@ Each linked panic wrapper starts with `55 48 89 e5` (`push rbp` and `mov rbp,rsp
 | `panic_bounds_check` | `0x4006bd` | `e8 0e 00 00 00` | `panic_nounwind_fmt` at `0x4006d0` |
 | `panic_nounwind_fmt` | `0x4006d4` | `e8 a7 fe ff ff` | `rust_begin_unwind` at `0x400580` |
 
-Each `call` and `push` writes eight bytes. Measured from the originating caller's RSP before its panic call, the direct `panic_nounwind_fmt` path uses 32 bytes. A call through any of the other three wrappers uses 48 bytes. The caller's existing frame and any earlier stack use enter the bound separately.
+Measure the additional stack use from the originating caller's RSP just before its panic call. A direct call to `panic_nounwind_fmt` uses 24 bytes in three writes of eight bytes each. The originating `call` writes a return address. The wrapper pushes RBP and its `call` to `rust_begin_unwind` writes a second return address.
+
+A call through any of the other three wrappers adds one RBP push and one return address for its `call` to `panic_nounwind_fmt`. This path uses 40 bytes in five writes of eight bytes each. The bound for the full execution includes the caller's existing frame and any earlier stack use separately.
 
 The handler's bytes are `0f 0b 0f 0b`. With writable stack space for the calls and pushes, execution reaches the first `ud2` before any access through the unprepared arguments. The host policy makes that instruction a nonaccepting stop.
 
 The standalone executable installs no SIGILL handler. Linux v6.6 resets caught dispositions on `exec`. A user-mode `ud2` enters the invalid-opcode handler, which delivers a forced SIGILL. [Exec setup](https://github.com/torvalds/linux/blob/v6.6/fs/exec.c#L1371) · [Disposition reset](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L537-L555) · [User-mode invalid-opcode entry](https://github.com/torvalds/linux/blob/v6.6/arch/x86/kernel/traps.c#L249-L265) · [SIGILL delivery](https://github.com/torvalds/linux/blob/v6.6/arch/x86/kernel/traps.c#L204-L212) · [Trap dispatch](https://github.com/torvalds/linux/blob/v6.6/arch/x86/kernel/traps.c#L147-L176)
 
-The forced delivery restores the default disposition when SIGILL was ignored or blocked and clears any SIGILL mask bit. For an untraced process under normal Linux delivery, the default action terminates the process without adding a signal handler frame to the user stack. [Forced signal delivery](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L1324-L1368) · [Default fatal action](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L2856-L2892)
+The forced delivery restores the default disposition when SIGILL was ignored or blocked and clears any SIGILL mask bit. Under normal Linux v6.6 delivery, the default action terminates the untraced fixture process. This fatal path adds no signal handler frame to the fixture's user stack. [Forced signal delivery](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L1324-L1368) · [Default fatal action](https://github.com/torvalds/linux/blob/v6.6/kernel/signal.c#L2856-L2892)
 
 The `ud2` at `0x401aed` is inside `stable::quicksort` and has incoming conditional branches at `0x4011f5` and `0x401575`. P8 must prove that separate trap unreachable. P5 still needs a linked-code proof that each declared panic path reaches the handler's first `ud2`, with the stack writes covered on every prefix. The replay exercises normal cases and stub rejections. The panic evidence here comes from disassembly and the cited kernel source.
 
