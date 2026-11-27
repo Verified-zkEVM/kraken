@@ -21,7 +21,7 @@ private def comparisonState (s : MachineData) (a b : BitVec 64) : MachineData :=
     of := v.signed != a.signed - b.signed }
   { s with status }
 
-private def afterRangeCompare (s : MachineData) : MachineData :=
+def afterRangeCompare (s : MachineData) : MachineData :=
   comparisonState s s.regs.rdx.toBitVec 98#64
 
 private theorem stepRangeCmp (e : Executable)
@@ -58,20 +58,31 @@ private theorem comparisonBorrows (a b : BitVec 64) :
   have bBound := b.isLt
   by_cases h : a.toNat < b.toNat <;> simp [h, BitVec.unsigned] <;> omega
 
-private theorem admissionRangeGuardState (e : Executable)
-    (cmpAt : e.directivesAtAddress 0x4003d1 = [rangeCmp])
+def rangeGuardSuccessor (s : MachineData) : MachineState :=
+  ⟨afterRangeCompare s, if 98 ≤ s.regs.rdx.toNat then 0x400501 else 0x4003de⟩
+
+private theorem stepRangeBranch (e : Executable)
     (jaeAt : e.directivesAtAddress 0x4003d8 = [rangeJae])
     (rejectAt : e.labels.label? "reject_range" = some 0x400501)
     (s : MachineData) (post : MachineState → Prop) :
-    step1 e ⟨s, 0x4003d1⟩ (fun mid => step1 e mid post) ↔
-      post ⟨afterRangeCompare s, if 98 ≤ s.regs.rdx.toNat then 0x400501 else 0x4003de⟩ := by
-  rw [stepRangeCmp e cmpAt, stepRangeJae e jaeAt rejectAt]
+    step1 e ⟨afterRangeCompare s, 0x4003d8⟩ post ↔ post (rangeGuardSuccessor s) := by
+  rw [stepRangeJae e jaeAt rejectAt]
+  unfold rangeGuardSuccessor
   change post ⟨afterRangeCompare s, if ((s.regs.rdx.toBitVec - 98#64).unsigned !=
     s.regs.rdx.toBitVec.unsigned - (98#64).unsigned) then 0x4003de else 0x400501⟩ ↔ _
   rw [comparisonBorrows, UInt64.toNat_toBitVec]
   by_cases h : s.regs.rdx.toNat < 98
   · simp [h, Nat.not_le_of_lt h]
   · simp [h, Nat.le_of_not_gt h]
+
+theorem admissionRangeGuardState (e : Executable)
+    (cmpAt : e.directivesAtAddress 0x4003d1 = [rangeCmp])
+    (jaeAt : e.directivesAtAddress 0x4003d8 = [rangeJae])
+    (rejectAt : e.labels.label? "reject_range" = some 0x400501)
+    (s : MachineData) (post : MachineState → Prop) :
+    step1 e ⟨s, 0x4003d1⟩ (fun mid => step1 e mid post) ↔
+      post (rangeGuardSuccessor s) := by
+  rw [stepRangeCmp e cmpAt, stepRangeBranch e jaeAt rejectAt]
 
 theorem admissionRangeGuard (e : Executable)
     (cmpAt : e.directivesAtAddress 0x4003d1 = [rangeCmp])
@@ -104,8 +115,33 @@ example : budgetJa.directive = ⸨dir| ja reject_input⸩ := rfl
 def tableEntryAddress (n : Nat) : BitVec 64 :=
   BitVec.ofNat 64 (0x4049f8 + 8 * n)
 
-private def afterLea (s : MachineData) : MachineData :=
+theorem tableEntryAddressToNat (n : Nat) (inRange : n < 98) :
+    (tableEntryAddress n).toNat = 0x4049f8 + 8 * n := by
+  unfold tableEntryAddress
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
+  omega
+
+def tableEntryReadSpan (n : Nat) (inRange : n < 98) : Std.Rco AddressBound :=
+  ⟨(tableEntryAddress n).toFin.castSucc, ⟨(tableEntryAddress n).toNat + 8, by
+    rw [tableEntryAddressToNat n inRange]
+    change 0x4049f8 + 8 * n + 8 < 2 ^ 64 + 1
+    omega⟩⟩
+
+theorem tableEntryReadSpanBounds (n : Nat) (inRange : n < 98) :
+    (tableEntryReadSpan n inRange).lower.val = 0x4049f8 + 8 * n ∧
+    (tableEntryReadSpan n inRange).upper.val = 0x4049f8 + 8 * n + 8 := by
+  change (tableEntryAddress n).toNat = _ ∧ (tableEntryAddress n).toNat + 8 = _
+  rw [tableEntryAddressToNat n inRange]
+  exact ⟨rfl, rfl⟩
+
+def afterLea (s : MachineData) : MachineData :=
   { s with regs := { s.regs with rax := 0x4049f8 } }
+
+def afterBudgetCompare (s : MachineData) (entry : BitVec 64) : MachineData :=
+  comparisonState (afterLea s) entry 0x4000#64
+
+def budgetGuardSuccessor (s : MachineData) (entry : BitVec 64) : MachineState :=
+  ⟨afterBudgetCompare s entry, if 0x4000 < entry.toNat then 0x4004fa else 0x4003f3⟩
 
 private theorem stepTableLea (e : Executable)
     (h : e.directivesAtAddress 0x4003de = [tableLea])
@@ -129,17 +165,18 @@ private theorem addressCalculation (s : MachineData) (inRange : s.regs.rdx.toNat
       omega
     _ = _ := rfl
 
-private theorem stepTableCmp (e : Executable)
+theorem tableCmpReadStep (e : Executable)
     (h : e.directivesAtAddress 0x4003e5 = [tableCmp])
     (s : MachineData) (inRange : s.regs.rdx.toNat < 98) (entry : BitVec 64)
-    (load : Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 = some entry.unsigned)
-    (post : MachineState → Prop) :
-    step1 e ⟨afterLea s, 0x4003e5⟩ post ↔ post ⟨comparisonState (afterLea s) entry 0x4000#64, 0x4003ed⟩ := by
-  unfold step1 Executable.step
+    (load : Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 = some entry.unsigned) :
+    e.step ⟨afterLea s, 0x4003e5⟩ .done =
+      .require_exec_access ⟨0x4003e5, 0x4003ed⟩
+        (fun () => .require_read_access (tableEntryReadSpan s.regs.rdx.toNat inRange)
+          (fun () => .done ⟨afterBudgetCompare s entry, 0x4003ed⟩)) := by
+  unfold Executable.step
   rw [h]
   simp only [tableCmp, Directives.interp, Directive.interp, Instr.interp, Operation.interp,
-    RegOrMem.interp, Operand.interp, ConstExpr.interp, AddrExpr.interp, Effects.All,
-    MachineData.load, Effects.All_require_read_access]
+    RegOrMem.interp, Operand.interp, ConstExpr.interp, AddrExpr.interp, MachineData.load]
   simp only [Width.bits, Width.bytes, Reg64s.get64, BitVec.toAddressSize, AddressSize.address_size,
     BitVec.take, BitVec.extractLsb'_eq_self, BitVec.signed, BitVec.zeroExtend_eq_setWidth,
     BitVec.setWidth_eq]
@@ -151,14 +188,30 @@ private theorem stepTableCmp (e : Executable)
   have eight : ((8 : Nat) : Int) = 8 := rfl
   have memory : (afterLea s).dmem = s.dmem := rfl
   rw [base, index, zero, Int.add_zero, eight, addressCalculation s inRange, memory, load]
-  simp only [Effects.All]
+  dsimp only
   have decoded : BitVec.ofInt 64 entry.unsigned = entry := by
     rw [BitVec.unsigned, BitVec.ofInt_natCast, BitVec.ofNat_toNat, BitVec.setWidth_eq]
   have immediate : Int64.toBitVec 16384 = 0x4000#64 := by decide
   have pc : (0x4003e5 : Int64) + Int64.ofNat 8 = 0x4003ed := by decide
   rw [decoded, immediate, pc]
+  have noWrap : ((tableEntryAddress s.regs.rdx.toNat).toFin.castSucc : AddressBound).val +
+      (UInt64.ofNat 8).toNat ≤ UInt64.size := by
+    change (tableEntryAddress s.regs.rdx.toNat).toNat + 8 ≤ UInt64.size
+    rw [tableEntryAddressToNat _ inRange]
+    change 0x4049f8 + 8 * s.regs.rdx.toNat + 8 ≤ 2 ^ 64
+    omega
+  simp only [require_access, dite_eq_left noWrap]
   rfl
 
+private theorem stepTableCmp (e : Executable)
+    (h : e.directivesAtAddress 0x4003e5 = [tableCmp])
+    (s : MachineData) (inRange : s.regs.rdx.toNat < 98) (entry : BitVec 64)
+    (load : Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 = some entry.unsigned)
+    (post : MachineState → Prop) :
+    step1 e ⟨afterLea s, 0x4003e5⟩ post ↔ post ⟨afterBudgetCompare s entry, 0x4003ed⟩ := by
+  unfold step1
+  rw [tableCmpReadStep e h s inRange entry load]
+  rfl
 
 private theorem stepBudgetJa (e : Executable)
     (h : e.directivesAtAddress 0x4003ed = [budgetJa])
@@ -185,6 +238,37 @@ private theorem budgetZero (entry : BitVec 64) :
     simp at diffNat
     omega
 
+private theorem stepBudgetBranch (e : Executable)
+    (jaAt : e.directivesAtAddress 0x4003ed = [budgetJa])
+    (rejectAt : e.labels.label? "reject_input" = some 0x4004fa)
+    (s : MachineData) (entry : BitVec 64) (post : MachineState → Prop) :
+    step1 e ⟨afterBudgetCompare s entry, 0x4003ed⟩ post ↔
+      post (budgetGuardSuccessor s entry) := by
+  rw [stepBudgetJa e jaAt rejectAt]
+  unfold budgetGuardSuccessor
+  change post ⟨afterBudgetCompare s entry,
+    if !((entry - 0x4000#64).unsigned != entry.unsigned - (0x4000#64).unsigned) &&
+      !(entry - 0x4000#64 == BitVec.zero 64) then 0x4004fa else 0x4003f3⟩ ↔ _
+  rw [comparisonBorrows, budgetZero]
+  by_cases h : entry.toNat < 0x4000
+  · simp [h, show ¬ 0x4000 < entry.toNat by omega]
+  · by_cases heq : entry.toNat = 0x4000
+    · simp [heq]
+    · simp [h, heq, show 0x4000 < entry.toNat by omega]
+
+theorem admissionBudgetGuardState (e : Executable)
+    (leaAt : e.directivesAtAddress 0x4003de = [tableLea])
+    (cmpAt : e.directivesAtAddress 0x4003e5 = [tableCmp])
+    (jaAt : e.directivesAtAddress 0x4003ed = [budgetJa])
+    (rejectAt : e.labels.label? "reject_input" = some 0x4004fa)
+    (s : MachineData) (inRange : s.regs.rdx.toNat < 98) (entry : BitVec 64)
+    (load : Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 = some entry.unsigned)
+    (post : MachineState → Prop) :
+    step1 e ⟨s, 0x4003de⟩ (fun lea => step1 e lea (fun cmp => step1 e cmp post)) ↔
+      post (budgetGuardSuccessor s entry) := by
+  rw [stepTableLea e leaAt, stepTableCmp e cmpAt s inRange entry load,
+    stepBudgetBranch e jaAt rejectAt]
+
 theorem admissionBudgetGuard (e : Executable)
     (leaAt : e.directivesAtAddress 0x4003de = [tableLea])
     (cmpAt : e.directivesAtAddress 0x4003e5 = [tableCmp])
@@ -195,18 +279,113 @@ theorem admissionBudgetGuard (e : Executable)
     (post : Int64 → UInt64 → Prop) :
     step1 e ⟨s, 0x4003de⟩
       (fun lea => step1 e lea (fun cmp => step1 e cmp (fun out => post out.pc out.data.regs.rdx))) ↔
-        post (if 0x4000 < entry.toNat then 0x4004fa else 0x4003f3) s.regs.rdx := by
-  rw [stepTableLea e leaAt, stepTableCmp e cmpAt s inRange entry load, stepBudgetJa e jaAt rejectAt]
-  change post (if !((entry - 0x4000#64).unsigned != entry.unsigned - (0x4000#64).unsigned) &&
-    !(entry - 0x4000#64 == BitVec.zero 64) then 0x4004fa else 0x4003f3) s.regs.rdx ↔ _
-  rw [comparisonBorrows, budgetZero]
-  by_cases h : entry.toNat < 0x4000
-  · simp [h, show ¬ 0x4000 < entry.toNat by omega]
-  · by_cases heq : entry.toNat = 0x4000
-    · simp [heq]
-    · simp [h, heq, show 0x4000 < entry.toNat by omega]
+        post (if 0x4000 < entry.toNat then 0x4004fa else 0x4003f3) s.regs.rdx :=
+  admissionBudgetGuardState e leaAt cmpAt jaAt rejectAt s inRange entry load
+    (fun out => post out.pc out.data.regs.rdx)
 
 #print axioms admissionBudgetGuard
+
+def provisionalBudgetEntry (n : Nat) : BitVec 64 :=
+  BitVec.ofNat 64 (stackRequired n)
+
+theorem provisionalBudgetEntryToNat (n : Nat) (inRange : n < 98) :
+    (provisionalBudgetEntry n).toNat = stackRequired n := by
+  unfold provisionalBudgetEntry
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
+  unfold stackRequired
+  omega
+
+def provisionalAdmissionSuccessor (s : MachineData) : MachineState :=
+  if s.regs.rdx.toNat < 98 then
+    budgetGuardSuccessor (afterRangeCompare s) (provisionalBudgetEntry s.regs.rdx.toNat)
+  else
+    rangeGuardSuccessor s
+
+theorem provisionalAdmissionSuccessorPc (s : MachineData) :
+    (provisionalAdmissionSuccessor s).pc = if s.regs.rdx.toNat ≤ 96 then 0x4003f3
+      else if s.regs.rdx.toNat < 98 then 0x4004fa else 0x400501 := by
+  by_cases inRange : s.regs.rdx.toNat < 98
+  · have budgetIff : 0x4000 < stackRequired s.regs.rdx.toNat ↔ 96 < s.regs.rdx.toNat := by
+      unfold stackRequired
+      omega
+    simp only [provisionalAdmissionSuccessor, ite_eq_left inRange, budgetGuardSuccessor,
+      provisionalBudgetEntryToNat _ inRange, budgetIff]
+    by_cases admit : s.regs.rdx.toNat ≤ 96
+    · simp [admit, Nat.not_lt.mpr admit]
+    · simp [Nat.lt_of_not_ge admit, admit]
+  · have reject := Nat.le_of_not_gt inRange
+    have notSmall : ¬ s.regs.rdx.toNat ≤ 96 := by omega
+    simp [provisionalAdmissionSuccessor, inRange, rangeGuardSuccessor, reject, notSmall]
+
+theorem provisionalAdmissionSuccessorInRange (s : MachineData) (inRange : s.regs.rdx.toNat < 98) :
+    provisionalAdmissionSuccessor s =
+      ⟨afterBudgetCompare (afterRangeCompare s) (provisionalBudgetEntry s.regs.rdx.toNat),
+        if s.regs.rdx.toNat ≤ 96 then 0x4003f3 else 0x4004fa⟩ := by
+  have pc := provisionalAdmissionSuccessorPc s
+  simp only [ite_eq_left inRange, provisionalAdmissionSuccessor] at pc ⊢
+  exact congrArg (fun addr => ⟨afterBudgetCompare (afterRangeCompare s)
+    (provisionalBudgetEntry s.regs.rdx.toNat), addr⟩ : Int64 → MachineState) pc
+
+theorem provisionalAdmissionSuccessorAdmitted (s : MachineData) (admit : s.regs.rdx.toNat ≤ 96) :
+    provisionalAdmissionSuccessor s =
+      ⟨afterBudgetCompare (afterRangeCompare s) (provisionalBudgetEntry s.regs.rdx.toNat), 0x4003f3⟩ := by
+  have inRange : s.regs.rdx.toNat < 98 := by omega
+  rw [provisionalAdmissionSuccessorInRange s inRange, ite_eq_left admit]
+
+theorem provisionalAdmissionSuccessorRejectedRange (s : MachineData) (reject : 98 ≤ s.regs.rdx.toNat) :
+    provisionalAdmissionSuccessor s = ⟨afterRangeCompare s, 0x400501⟩ := by
+  simp [provisionalAdmissionSuccessor, rangeGuardSuccessor, Nat.not_lt.mpr reject, reject]
+
+theorem provisionalAdmissionSuccessorFrame (s : MachineData) :
+    (provisionalAdmissionSuccessor s).data.regs =
+      (if s.regs.rdx.toNat < 98 then { s.regs with rax := 0x4049f8 } else s.regs) ∧
+    (provisionalAdmissionSuccessor s).data.zmms = s.zmms ∧
+    (provisionalAdmissionSuccessor s).data.df = s.df ∧
+    (provisionalAdmissionSuccessor s).data.dmem = s.dmem := by
+  by_cases inRange : s.regs.rdx.toNat < 98 <;>
+    simp [inRange, provisionalAdmissionSuccessor, rangeGuardSuccessor, budgetGuardSuccessor,
+      afterBudgetCompare, afterRangeCompare, afterLea, comparisonState]
+
+theorem provisionalAdmissionSuccessorRdx (s : MachineData) :
+    (provisionalAdmissionSuccessor s).data.regs.rdx = s.regs.rdx := by
+  rw [(provisionalAdmissionSuccessorFrame s).1]
+  split <;> rfl
+
+private theorem loadAfterRangeCompare (s : MachineData) (inRange : s.regs.rdx.toNat < 98)
+    (load : s.regs.rdx.toNat < stackTableLength →
+      Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 =
+        some (stackRequired s.regs.rdx.toNat : Int)) :
+    Mem.loadInt (afterRangeCompare s).dmem (tableEntryAddress (afterRangeCompare s).regs.rdx.toNat) 8 =
+      some (provisionalBudgetEntry s.regs.rdx.toNat).unsigned := by
+  change Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 =
+    some ((provisionalBudgetEntry s.regs.rdx.toNat).toNat : Int)
+  rw [provisionalBudgetEntryToNat _ inRange]
+  exact load inRange
+
+private theorem provisionalAdmissionGuardsState (e : Executable)
+    (rangeCmpAt : e.directivesAtAddress 0x4003d1 = [rangeCmp])
+    (jaeAt : e.directivesAtAddress 0x4003d8 = [rangeJae])
+    (rangeRejectAt : e.labels.label? "reject_range" = some 0x400501)
+    (leaAt : e.directivesAtAddress 0x4003de = [tableLea])
+    (tableCmpAt : e.directivesAtAddress 0x4003e5 = [tableCmp])
+    (jaAt : e.directivesAtAddress 0x4003ed = [budgetJa])
+    (budgetRejectAt : e.labels.label? "reject_input" = some 0x4004fa)
+    (s : MachineData)
+    (load : s.regs.rdx.toNat < stackTableLength →
+      Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 =
+        some (stackRequired s.regs.rdx.toNat : Int))
+    (post : MachineState → Prop) :
+    step1 e ⟨s, 0x4003d1⟩ (fun mid => step1 e mid (fun range =>
+      if range.pc = 0x4003de then
+        step1 e range (fun lea => step1 e lea (fun cmp => step1 e cmp post))
+      else post range)) ↔ post (provisionalAdmissionSuccessor s) := by
+  rw [admissionRangeGuardState e rangeCmpAt jaeAt rangeRejectAt]
+  by_cases inRange : s.regs.rdx.toNat < 98
+  · simp only [rangeGuardSuccessor, provisionalAdmissionSuccessor,
+      ite_eq_right (Nat.not_le_of_lt inRange), ite_eq_left inRange, ↓reduceIte]
+    exact admissionBudgetGuardState e leaAt tableCmpAt jaAt budgetRejectAt (afterRangeCompare s)
+      inRange (provisionalBudgetEntry s.regs.rdx.toNat) (loadAfterRangeCompare s inRange load) post
+  · simp [provisionalAdmissionSuccessor, inRange, rangeGuardSuccessor, Nat.le_of_not_gt inRange]
 
 theorem provisionalAdmissionGuards (e : Executable)
     (rangeCmpAt : e.directivesAtAddress 0x4003d1 = [rangeCmp])
@@ -228,37 +407,50 @@ theorem provisionalAdmissionGuards (e : Executable)
         else post range.pc range.data.regs.rdx)) ↔
       post (if s.regs.rdx.toNat ≤ 96 then 0x4003f3
         else if s.regs.rdx.toNat < 98 then 0x4004fa else 0x400501) s.regs.rdx := by
-  rw [admissionRangeGuardState e rangeCmpAt jaeAt rangeRejectAt]
-  by_cases reject : 98 ≤ s.regs.rdx.toNat
-  · have notSmall : ¬ s.regs.rdx.toNat ≤ 96 := by omega
-    simp [reject, notSmall, Nat.not_lt.mpr reject, afterRangeCompare, comparisonState]
-  · have inRange : s.regs.rdx.toNat < 98 := by omega
-    have tableBound : s.regs.rdx.toNat < stackTableLength := inRange
-    let entry := BitVec.ofNat 64 (stackRequired s.regs.rdx.toNat)
-    have entryNat : entry.toNat = stackRequired s.regs.rdx.toNat := by
-      dsimp only [entry]
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
-      unfold stackRequired
-      omega
-    have loadAfter :
-        Mem.loadInt (afterRangeCompare s).dmem (tableEntryAddress (afterRangeCompare s).regs.rdx.toNat) 8 =
-          some entry.unsigned := by
-      change Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 = some (entry.toNat : Int)
-      rw [entryNat]
-      exact load tableBound
-    simp only [ite_eq_right reject, ↓reduceIte]
-    rw [admissionBudgetGuard e leaAt tableCmpAt jaAt budgetRejectAt
-      (afterRangeCompare s) inRange entry loadAfter, entryNat]
-    have budgetIff : stackRequired s.regs.rdx.toNat ≤ 0x4000 ↔ s.regs.rdx.toNat ≤ 96 := by
-      unfold stackRequired
-      omega
-    by_cases admit : s.regs.rdx.toNat ≤ 96
-    · have withinBudget := budgetIff.mpr admit
-      simp [admit, Nat.not_lt.mpr withinBudget, afterRangeCompare, comparisonState]
-    · have overBudget : 0x4000 < stackRequired s.regs.rdx.toNat :=
-        Nat.lt_of_not_ge (fun withinBudget => admit (budgetIff.mp withinBudget))
-      simp [admit, overBudget, inRange, afterRangeCompare, comparisonState]
+  simpa only [provisionalAdmissionSuccessorPc, provisionalAdmissionSuccessorRdx] using
+    (provisionalAdmissionGuardsState e rangeCmpAt jaeAt rangeRejectAt leaAt tableCmpAt jaAt
+      budgetRejectAt s load (fun out => post out.pc out.data.regs.rdx))
 
+private theorem eventuallyFromStep (e : Executable) (before after : MachineState)
+    (step : ∀ midPost, step1 e before midPost ↔ midPost after)
+    (post : MachineState → Prop)
+    (continueFrom : Eventually (step1 e) post after) :
+    Eventually (step1 e) post before :=
+  .step before (· = after) ((step _).mpr rfl) (fun _ h => h ▸ continueFrom)
+
+theorem provisionalAdmissionEventually (e : Executable)
+    (rangeCmpAt : e.directivesAtAddress 0x4003d1 = [rangeCmp])
+    (jaeAt : e.directivesAtAddress 0x4003d8 = [rangeJae])
+    (rangeRejectAt : e.labels.label? "reject_range" = some 0x400501)
+    (leaAt : e.directivesAtAddress 0x4003de = [tableLea])
+    (tableCmpAt : e.directivesAtAddress 0x4003e5 = [tableCmp])
+    (jaAt : e.directivesAtAddress 0x4003ed = [budgetJa])
+    (budgetRejectAt : e.labels.label? "reject_input" = some 0x4004fa)
+    (s : MachineData)
+    (load : s.regs.rdx.toNat < stackTableLength →
+      Mem.loadInt s.dmem (tableEntryAddress s.regs.rdx.toNat) 8 =
+        some (stackRequired s.regs.rdx.toNat : Int))
+    (post : MachineState → Prop)
+    (continueFrom : Eventually (step1 e) post (provisionalAdmissionSuccessor s)) :
+    Eventually (step1 e) post ⟨s, 0x4003d1⟩ := by
+  apply eventuallyFromStep e _ _ (stepRangeCmp e rangeCmpAt s) post
+  apply eventuallyFromStep e _ _ (stepRangeBranch e jaeAt rangeRejectAt s) post
+  by_cases inRange : s.regs.rdx.toNat < 98
+  · have fallthrough : rangeGuardSuccessor s = ⟨afterRangeCompare s, 0x4003de⟩ := by
+      simp [rangeGuardSuccessor, Nat.not_le_of_lt inRange]
+    rw [fallthrough]
+    apply eventuallyFromStep e _ _ (stepTableLea e leaAt (afterRangeCompare s)) post
+    let entry := provisionalBudgetEntry s.regs.rdx.toNat
+    apply eventuallyFromStep e _ _
+      (stepTableCmp e tableCmpAt (afterRangeCompare s) inRange entry
+        (loadAfterRangeCompare s inRange load)) post
+    apply eventuallyFromStep e _ _ (stepBudgetBranch e jaAt budgetRejectAt (afterRangeCompare s) entry) post
+    simpa only [provisionalAdmissionSuccessor, ite_eq_left inRange] using continueFrom
+  · simpa only [provisionalAdmissionSuccessor, ite_eq_right inRange] using continueFrom
+
+#print axioms tableCmpReadStep
+#print axioms tableEntryReadSpanBounds
 #print axioms provisionalAdmissionGuards
+#print axioms provisionalAdmissionEventually
 
 end LeanVM.Admission
