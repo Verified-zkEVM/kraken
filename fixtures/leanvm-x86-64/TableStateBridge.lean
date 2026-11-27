@@ -49,20 +49,6 @@ theorem stockTableReadFootprint (n : Nat) (inRange : n < stackTableLength) :
   unfold stackTableLength at inRange
   omega
 
-theorem stockTableReadPermission (n : Nat) (inRange : n < stackTableLength)
-    (readable writable : Nat → Prop)
-    (readOnly : ∀ address, 0x403000 ≤ address → address < 0x405000 →
-      readable address ∧ ¬ writable address)
-    (address : Nat)
-    (aboveLower : (tableEntryReadSpan n inRange).lower.val ≤ address)
-    (belowUpper : address < (tableEntryReadSpan n inRange).upper.val) :
-    readable address ∧ ¬ writable address := by
-  have ⟨lower, upper⟩ := tableEntryReadSpanBounds n inRange
-  unfold stackTableLength at inRange
-  rw [lower] at aboveLower
-  rw [upper] at belowUpper
-  exact readOnly address (by omega) (by omega)
-
 private theorem loadBytesOfLookups (m : Mem 64) (addr : BitVec 64) (bs : List UInt8)
     (read : ∀ i : Nat, i < bs.length → m.get? (addr + BitVec.ofNat 64 i) = bs[i]?) :
     m.loadBytes addr bs.length = some bs := by
@@ -118,7 +104,6 @@ example (file : List UInt8) (s : MachineData)
   stockTableLoadOfMappedFile file s.dmem fileTable mapped s.regs.rdx.toNat
 
 #print axioms stockTableReadFootprint
-#print axioms stockTableReadPermission
 #print axioms stockTableLoadOfMappedFile
 
 end LeanVM.Admission
