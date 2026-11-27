@@ -641,6 +641,12 @@ private def delabOperation (aw : Width) (w? : Option Width) : X64DelabM (TSyntax
     `(x64_instr| $op:x64_cmov_op $src:x64_operand, $dst:x64_reg)
   -- Unary arithmetic / bitwise
   | Operation.mul _ _ => delabUnaryOp "mul" aw w?
+  | Operation.div width _ =>
+    let width? := evalWidth? (← Meta.whnf width)
+    unless width? == some .W32 || width? == some .W64 do failure
+    let op := mkSuffixed `x64_div_op "div" (widthSuffix width?)
+    let src ← withNaryArg 1 delabReg
+    `(x64_instr| $op:x64_div_op $src:x64_reg)
   | Operation.neg _ _ => delabUnaryOp "neg" aw w?
   | Operation.dec _ _ => delabUnaryOp "dec" aw w?
   | Operation.inc _ _ => delabUnaryOp "inc" aw w?

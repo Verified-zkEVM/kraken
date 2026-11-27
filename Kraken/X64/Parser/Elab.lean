@@ -798,6 +798,14 @@ def elabInstr (stx : TSyntax `x64_instr) : TermElabM Expr := withRef stx do
       let src ← elabReg src
       let dst ← elabRegOrMemOperand dst
       mkAppWidth mk #[dst, src, cnt]
+  | `(x64_instr| $op:x64_div_op $src:x64_reg) =>
+    let width? ← evalSuffixWidth? op
+    mkRegularInstr (width? := width?) do
+      let src ← elabReg src
+      let width ← whnf (← instantiateMVars (← getOperandWidth))
+      unless evalWidth? width == some .W32 || evalWidth? width == some .W64 do
+        throwError "DIV requires a 32- or 64-bit register"
+      mkAppWidth (mkConst ``Operation.div) #[src]
   | `(x64_instr| $op:x64_bswap_op $dst:x64_reg) =>
     let width? ← evalSuffixWidth? op
     mkRegularInstr (width? := width?) do
