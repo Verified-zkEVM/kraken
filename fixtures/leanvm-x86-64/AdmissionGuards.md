@@ -10,7 +10,7 @@ For an in-range length `n`, `tableCmpReadStep` exposes the read effect for `[0x4
 
 ## Replay the admission proof suite
 
-Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available. Run `replay-admission.sh` from a checkout of the replay branch or invoke it by absolute path. All four proof sources are beside the script. [Call-setup proof at 6a482dd0](https://github.com/Verified-zkEVM/kraken/blob/6a482dd06ab1f3f24311689c92a97d2818cee153/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at 54ab9b71](https://github.com/Verified-zkEVM/kraken/blob/54ab9b716c3fe83a638069f33563ffb4a06d4ab5/fixtures/leanvm-x86-64/TableStateBridge.lean)
+Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available. Run `replay-admission.sh` from a checkout of the replay branch or invoke it by absolute path. All four proof sources are beside the script. [Call-setup proof at 6a482dd0](https://github.com/Verified-zkEVM/kraken/blob/6a482dd06ab1f3f24311689c92a97d2818cee153/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at f33d04ab](https://github.com/Verified-zkEVM/kraken/blob/f33d04ab9e1ef18aeb316398d1c6100d628a6b10/fixtures/leanvm-x86-64/TableStateBridge.lean)
 
 ```sh
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh
