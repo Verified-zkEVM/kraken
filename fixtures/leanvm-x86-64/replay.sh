@@ -77,7 +77,7 @@ for linker in ld.bfd ld.lld; do
     "$linker" "${flags[@]}" -o "$small_image" start-small-stack-table.o "$object"
     "$linker" "${flags[@]}" -o "$inspect_image" start-inspect-stack-table.o "$object"
 
-    python3 -I "$fixture/check-image.py" stack-table.bin "$image" "$small_image" "$inspect_image"
+    python3 -I "$fixture/check-image.py" --stock-admission stack-table.bin "$image" "$small_image" "$inspect_image"
     for path in "$image" "$small_image" "$inspect_image"; do
         if [[ $(readelf -rW "$path") != *'There are no relocations in this file.' ]]; then
             printf '%s has relocations\n' "$path" >&2
