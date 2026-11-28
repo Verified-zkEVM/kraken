@@ -26,14 +26,13 @@ theorem allocatorDiv (cursor : BitVec 32) :
       some (BitVec.ofNat 32 (cursor.toNat / 8), BitVec.ofNat 32 (cursor.toNat % 8)) :=
   divWithZeroHigh cursor (8 : BitVec 32) (by decide)
 
-theorem sortDiv (n : Nat) (lower : 21 ≤ n) (upper : n ≤ 96) :
+theorem sortDiv (n : Nat) (positive : 0 < n) (fits : n < 2 ^ 64) :
     X64.unsignedDiv (0 : BitVec 64) (0x4000000000000000 : BitVec 64) (BitVec.ofNat 64 n) =
       some (BitVec.ofNat 64 (2 ^ 62 / n), BitVec.ofNat 64 (2 ^ 62 % n)) := by
-  have fits : n < 2 ^ 64 := by omega
-  have positive : 0 < (BitVec.ofNat 64 n).toNat := by
-    simpa [BitVec.toNat_ofNat, Nat.mod_eq_of_lt fits] using (show 0 < n by omega)
+  have divisorPositive : 0 < (BitVec.ofNat 64 n).toNat := by
+    simpa [BitVec.toNat_ofNat, Nat.mod_eq_of_lt fits] using positive
   simpa [BitVec.toNat_ofNat, Nat.mod_eq_of_lt fits] using
-    divWithZeroHigh (0x4000000000000000 : BitVec 64) (BitVec.ofNat 64 n) positive
+    divWithZeroHigh (0x4000000000000000 : BitVec 64) (BitVec.ofNat 64 n) divisorPositive
 
 theorem allocatorDivStep (s : MachineData) (span : Std.Rco Int64)
     (cursor : BitVec 32) (low : s.regs.get (.low .rax .W32) = cursor)
@@ -48,7 +47,7 @@ theorem allocatorDivStep (s : MachineData) (span : Std.Rco Int64)
   rfl
 
 theorem sortDivStep (s : MachineData) (span : Std.Rco Int64)
-    (n : Nat) (lower : 21 ≤ n) (upper : n ≤ 96)
+    (n : Nat) (positive : 0 < n) (fits : n < 2 ^ 64)
     (low : s.regs.get (.low .rax .W64) = 0x4000000000000000)
     (high : s.regs.get (.low .rdx .W64) = 0)
     (divisor : s.regs.get (.low .rsi .W64) = BitVec.ofNat 64 n)
@@ -58,7 +57,7 @@ theorem sortDivStep (s : MachineData) (span : Std.Rco Int64)
         undefined fun status =>
           next { (s.setReg (.low .rax .W64) (BitVec.ofNat 64 (2 ^ 62 / n))).setReg
                      (.low .rdx .W64) (BitVec.ofNat 64 (2 ^ 62 % n)) with status }) := by
-  simp only [Instr.interp, Operation.interp, low, high, divisor, sortDiv n lower upper]
+  simp only [Instr.interp, Operation.interp, low, high, divisor, sortDiv n positive fits]
   rfl
 
 #print axioms allocatorDivStep
