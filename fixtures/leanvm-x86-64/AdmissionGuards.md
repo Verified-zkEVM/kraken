@@ -82,6 +82,35 @@ The `--encoding` replay prints and reassembles the four modeled directives, chec
 
 AI disclosure. Codex agents wrote `CaseSelection.lean`, the replay changes, and this section from the stock disassembly and the case-argument proof. They extracted the selector bytes from both linked images and ran the proof and encoding replays.
 
+## Lay out the full stock entry stub
+
+`stockStubText` lays out the stock `_start` stub from `0x4002f0` through `0x40051b` (exclusive). This 555-byte range contains 109 instructions and uses the normal replay variant. Its selector, guard, and call-setup directives reuse the existing proof inputs. `stockStubTextCaseSelectionAt` establishes the four selector placements. Given the exact admission file slice, `stockStubTextAdmissionPlacement` supplies the 16 admission placements and both rejection labels. [Stock image checker and replay](https://github.com/Verified-zkEVM/kraken/tree/dcd2b13b1c0b2f42c29962cad454c1b244de0e20/fixtures/leanvm-x86-64)
+
+The transfer lemmas compare an accepted admission fragment with an executable satisfying `StockAdmissionPlacement`. They prove equality of the raw step effects at the 16 shared addresses and equality of the two label resolutions. The file slice and placement premises remain explicit.
+
+The stub layout uses raw bytes at these sites. Executing them requires separate instruction semantics and host contracts.
+
+| Instruction | Virtual addresses |
+| --- | --- |
+| `syscall` | `0x400337`, `0x400366`, `0x400388`, `0x400519` |
+| `repz cmpsq` | `0x4004ea` |
+
+The comparison covers the stub's byte range within `.text`. That ELF section also contains code from the X1 object. CLI parsing, syscall behavior, the return checks, and the X1 code remain outside the execution proofs in this section.
+
+The `--encoding` replay checks the directive boundaries and the SHA-256 digest of all 555 reassembled bytes. It rejects remaining relocations. The full-stub control changes the CLI selector subtraction from 48 to 49 and checks that only that row's bytes differ.
+
+Set `replay` to the stock replay's output directory. For both linkers, `readelf` should show a readable, executable `PT_LOAD` starting at virtual address `0x400000` and file offset zero. Its file-backed range should cover `[0x4002f0, 0x40051b)`. The corresponding bytes begin at file offset `0x2f0`. Both digests should equal `a383fe100af5c52ec26dbe1efefa26aaef55111e026c76caad752aba6e43324e`.
+
+```sh
+for linker in ld.bfd ld.lld; do
+    image="$replay/$linker.elf"
+    readelf -lW "$image"
+    dd if="$image" bs=1 skip=$((0x2f0)) count=555 status=none | sha256sum
+done
+```
+
+AI disclosure. Codex agents wrote `StockStubText.lean`, the full-stub encoding replay, the runner changes, and this section. They used the stock disassembly, the checked directive lists, and the existing printer replay. They compared both linked byte ranges and replayed the proof and encoding checks.
+
 ## Replay the admission proof suite
 
 Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available. Run `replay-admission.sh` from a checkout of the replay branch or invoke it by absolute path. The proof sources are beside the script. [Call-setup proof at 6a482dd0](https://github.com/Verified-zkEVM/kraken/blob/6a482dd06ab1f3f24311689c92a97d2818cee153/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at f33d04ab](https://github.com/Verified-zkEVM/kraken/blob/f33d04ab9e1ef18aeb316398d1c6100d628a6b10/fixtures/leanvm-x86-64/TableStateBridge.lean)
@@ -90,7 +119,7 @@ Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available.
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh
 ```
 
-The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorems for the guards, table, call setup, admission image, fragment, case arguments, and selector. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
+The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit includes the public theorems for the stock stub layout and earlier proof modules. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
 
 The source hashes record the review baseline. When a proof source changes, update its hash in the same reviewed change. This replay checks the pinned sources and their axiom dependencies. Statement review and `lake comparator` replay are separate checks for the linked-code claim.
 
@@ -104,7 +133,7 @@ Run the suite with `--encoding` to print the modeled directives with Kraken's AT
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh --encoding
 ```
 
-The harness gives each printed CMP immediate a forward `.set` name so GNU `as` preserves the stock immediate width. It writes the printed CALL displacement relative to the label immediately after the instruction. The two Jcc labels have their decoded stock offsets. The RIP-relative data operands go directly from the printer to the assembler.
+The harness gives the two admission CMP immediates forward `.set` names so GNU `as` preserves their stock immediate widths. It writes the printed CALL displacement relative to the label immediately after the instruction. The two Jcc labels have their decoded stock offsets. The RIP-relative data operands go directly from the printer to the assembler.
 
 The replay checks each instruction's start and size, both branch label addresses, and all 120 guard and call-setup bytes. It rejects any remaining relocation. Before printing, one control changes the first modeled CMP immediate from 98 to 99. Another changes the destination of the modeled `movq %r13, %rsp` to `%rbp`. Each control checks that only the changed instruction's bytes differ.
 
