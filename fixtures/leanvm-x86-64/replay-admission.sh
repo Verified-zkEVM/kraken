@@ -17,7 +17,7 @@ fi
 proof_build=$(mktemp -d)
 proof_build=$(cd -- "$proof_build" && pwd -P)
 trap 'rm -rf -- "$proof_build"' EXIT
-cp -- "$fixture"/{StackTable,AdmissionGuards,TableStateBridge,CallSetup,AdmissionImage,AdmissionFragment,CaseArgumentBridge}.lean \
+cp -- "$fixture"/{StackTable,AdmissionGuards,TableStateBridge,CallSetup,AdmissionImage,AdmissionFragment,CaseArgumentBridge,CaseSelection}.lean \
     "$proof_build/"
 (
     cd -- "$proof_build"
@@ -29,6 +29,7 @@ f78f585ebe895e06f2e2d1c0d146c62f66aad921ec3ae193de00f09a1c38b192  StackTable.lea
 629b390f1baede98781528280035117823bf62b2d94b4268d2f714f2ddf898f9  AdmissionImage.lean
 b1d2ba9afe45de7e11b1c7d9a7ac051d42a8b2ca37026c1b3c358df0d9564c5c  AdmissionFragment.lean
 11c8cd12e19454f544e8320ad2fd56129404353a029eb0c91be4f803b093c01b  CaseArgumentBridge.lean
+024f7722af6102e48f72e5b914f5d94cec56c12af6eb3403e9117c1ffdcb505c  CaseSelection.lean
 SHA256
         printf 'Admission replay requires the pinned fixture sources.\n' >&2
         exit 1
@@ -39,7 +40,7 @@ if ((check_encoding)); then
     (
         cd -- "$proof_build"
         sha256sum --check --strict <<'SHA256'
-87ad25e2bf72dd5495fe2cf691a0a622eeada21d7cad13f29845319d1bf979a0  AdmissionEncodingReplay.lean
+8e88f4e66b5f7e7bab55ab07d9658331b511df0ecf09cb69c9ae07f1355ee243  AdmissionEncodingReplay.lean
 SHA256
     )
 fi
@@ -87,7 +88,7 @@ cat > "$proof_build/ReplayAxioms.lean" <<'LEAN'
 import Lean
 import AdmissionFragment
 import TableStateBridge
-import CaseArgumentBridge
+import CaseSelection
 
 open Lean Elab Command LeanVM.Admission
 
@@ -96,7 +97,7 @@ run_cmd do
   let env ← getEnv
   let entryPoints := #[``provisionalAdmissionEventually, ``stockTableLoadOfMappedFile,
     ``admissionThenCall, ``stockAdmissionGuardPlacements, ``stockAdmissionFragmentPlacement,
-    ``stockCaseInputOfMappedFile]
+    ``stockCaseInputOfMappedFile, ``stockCaseSelectionEventually]
   let proofModules ← entryPoints.mapM fun name => do
     let some (.thmInfo _) := env.find? name
       | throwError "Required replay entry point {name} must be a theorem"
@@ -129,7 +130,7 @@ fi
     lean_cmd=$2
     export LEAN_PATH="$proof_build${LEAN_PATH:+:$LEAN_PATH}"
     options=(--root="$proof_build" -DautoImplicit=false -DrelaxedAutoImplicit=false)
-    for module in StackTable AdmissionGuards TableStateBridge CallSetup AdmissionImage AdmissionFragment CaseArgumentBridge; do
+    for module in StackTable AdmissionGuards TableStateBridge CallSetup AdmissionImage AdmissionFragment CaseArgumentBridge CaseSelection; do
         "$lean_cmd" "${options[@]}" -o "$proof_build/$module.olean" "$proof_build/$module.lean"
     done
     "$lean_cmd" "${options[@]}" "$proof_build/ReplayAxioms.lean"

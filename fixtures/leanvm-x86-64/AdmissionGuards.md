@@ -38,7 +38,7 @@ The 11 case records start at virtual address `0x403000` and file offset `0x3000`
 
 `stockCaseArgumentSpan` proves the address and file-offset calculation for each record. `stockCaseLoadsOfMappedFile` assumes that the file contains the stock words and that Kraken's memory reads return those file bytes. It derives unsigned `Mem.loadInt` results for both fields. `stockCaseInputOfMappedFile` supplies the call-setup pointer read when R12 selects the record.
 
-The linked proof must establish the loader's mapping and read permissions. It still needs the execution proof for the selector and the load into RDX before the range guard. The input bytes and P7's entry conditions for the region named by the pointer also remain open. [leanVM tracker](https://github.com/leanEthereum/leanVM/issues/881)
+The linked proof must establish the loader's mapping and read permissions. The selector proof below uses the length read to reach the range guard. The input bytes and P7's entry conditions for the region named by the pointer remain open. [leanVM tracker](https://github.com/leanEthereum/leanVM/issues/881)
 
 The 176 argument bytes matched the Lean words in both images. Set `replay` to the stock replay's output directory. Both hashes should equal `4a6d830b92de6037d8444e1a16c094ab907a77d487df90aa63c975edf874e49b`.
 
@@ -64,6 +64,24 @@ python3 -I "$checker" --stock-admission "$replay/stack-table.bin" "$changed" \
 
 AI disclosure. Codex wrote `CaseArgumentBridge.lean`, the runner changes, and this section from the linked case records and the call-setup proof. Codex extracted both images' argument words, checked their equality to the Lean words, and replayed separate pointer and length mutations.
 
+## Select the case record and load its length
+
+`stockCaseSelectionEventually` takes four typed instruction placements starting at `0x4003be` and assumes RBX holds a valid case index. It uses the case record's exact file bytes and the memory premise from `CaseArgumentBridge.lean`. The theorem composes with a continuation at `0x4003d1` with the record address in R12 and the corresponding length in RDX. The proof covers every modeled choice of the two undefined shift flags. ADD replaces those flags before the length load.
+
+`stockCaseLengthReadEffects` exposes the eight-byte read of the length field. The loader must establish the memory mapping and the required read and execute permissions. The caller's argument parsing and checks must establish the initial RBX value. Linking this theorem to the ELF requires the four typed placements to correspond to the loaded code.
+
+Both stock ELF files match the 19 bytes in the encoding replay at file offset `0x3be`. Set `replay` to the output directory from the pinned stock replay. Both hashes should equal `e647c4082719d228a96739153347a36eef9327362d9622b06e087e55be91418b`.
+
+```sh
+for linker in ld.bfd ld.lld; do
+    dd if="$replay/$linker.elf" bs=1 skip=$((0x3be)) count=19 status=none | sha256sum
+done
+```
+
+The `--encoding` replay prints and reassembles the four modeled directives, checks their boundaries, and compares all 19 bytes. An operand control replaces the modeled shift count of five with four. It checks that only that instruction's bytes change.
+
+AI disclosure. Codex agents wrote `CaseSelection.lean`, the replay changes, and this section from the stock disassembly and the case-argument proof. They extracted the selector bytes from both linked images and ran the proof and encoding replays.
+
 ## Replay the admission proof suite
 
 Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available. Run `replay-admission.sh` from a checkout of the replay branch or invoke it by absolute path. The proof sources are beside the script. [Call-setup proof at 6a482dd0](https://github.com/Verified-zkEVM/kraken/blob/6a482dd06ab1f3f24311689c92a97d2818cee153/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at f33d04ab](https://github.com/Verified-zkEVM/kraken/blob/f33d04ab9e1ef18aeb316398d1c6100d628a6b10/fixtures/leanvm-x86-64/TableStateBridge.lean)
@@ -72,7 +90,7 @@ Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available.
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh
 ```
 
-The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorems for the guards, table, call setup, admission image, fragment, and case arguments. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
+The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorems for the guards, table, call setup, admission image, fragment, case arguments, and selector. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
 
 The source hashes record the review baseline. When a proof source changes, update its hash in the same reviewed change. This replay checks the pinned sources and their axiom dependencies. Statement review and `lake comparator` replay are separate checks for the linked-code claim.
 
@@ -80,7 +98,7 @@ AI disclosure. Codex wrote the replay script and this section from the proof rep
 
 ## Replay the instruction encodings
 
-Run the suite with `--encoding` to print the 16 modeled directives with Kraken's AT&T printer and assemble them with GNU x86 binutils. Binutils 2.42 passed the replay. This follows the printer and assembler comparison used for leanVM #837. [Round-trip precedent](https://github.com/leanEthereum/leanVM/blob/df4acb9ce90c102d0019f145b4a9399abfee8e82/formal/native/rustc/ingest/faithful.sh#L25-L42)
+Run the suite with `--encoding` to print the modeled directives with Kraken's AT&T printer and assemble them with GNU x86 binutils. Binutils 2.42 passed the replay. This follows the printer and assembler comparison used for leanVM #837. [Round-trip precedent](https://github.com/leanEthereum/leanVM/blob/df4acb9ce90c102d0019f145b4a9399abfee8e82/formal/native/rustc/ingest/faithful.sh#L25-L42)
 
 ```sh
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh --encoding
@@ -88,8 +106,8 @@ Run the suite with `--encoding` to print the 16 modeled directives with Kraken's
 
 The harness gives each printed CMP immediate a forward `.set` name so GNU `as` preserves the stock immediate width. It writes the printed CALL displacement relative to the label immediately after the instruction. The two Jcc labels have their decoded stock offsets. The RIP-relative data operands go directly from the printer to the assembler.
 
-The replay checks each instruction's start and size, both branch label addresses, and all 120 bytes. It rejects any remaining relocation. Before printing, one control changes the first modeled CMP immediate from 98 to 99. Another changes the destination of the modeled `movq %r13, %rsp` to `%rbp`. Each control checks that only the changed instruction's bytes differ.
+The replay checks each instruction's start and size, both branch label addresses, and all 120 guard and call-setup bytes. It rejects any remaining relocation. Before printing, one control changes the first modeled CMP immediate from 98 to 99. Another changes the destination of the modeled `movq %r13, %rsp` to `%rbp`. Each control checks that only the changed instruction's bytes differ.
 
-This comparison checks the curated byte-to-directive pairs through Kraken's printer, the assembler syntax adjustments, and GNU binutils. The Lean proofs still require the typed placements and labels recorded in `StockAdmissionPlacement`. The linked claim also requires the ELF byte and load-permission checks.
+This comparison checks the curated byte-to-directive pairs through Kraken's printer, the assembler syntax adjustments, and GNU binutils. The Lean proofs still require the typed placements and labels recorded in `StockAdmissionPlacement` and `StockCaseSelectionAt`. The linked claim also requires the ELF byte and load-permission checks.
 
 AI disclosure. Codex wrote `AdmissionEncodingReplay.lean`, the `--encoding` runner changes, and this section from the curated stock rows, the assembly tools, and #837's comparison. It ran the byte replay and both model operand controls.
