@@ -17,7 +17,7 @@ fi
 proof_build=$(mktemp -d)
 proof_build=$(cd -- "$proof_build" && pwd -P)
 trap 'rm -rf -- "$proof_build"' EXIT
-cp -- "$fixture"/{StackTable,AdmissionGuards,TableStateBridge,CallSetup,AdmissionImage,AdmissionFragment}.lean \
+cp -- "$fixture"/{StackTable,AdmissionGuards,TableStateBridge,CallSetup,AdmissionImage,AdmissionFragment,CaseArgumentBridge}.lean \
     "$proof_build/"
 (
     cd -- "$proof_build"
@@ -28,6 +28,7 @@ f78f585ebe895e06f2e2d1c0d146c62f66aad921ec3ae193de00f09a1c38b192  StackTable.lea
 407646f2749c65fc8a8c898d73d4af38031e77482e88ec8404e9bcbdbd9dc96e  CallSetup.lean
 629b390f1baede98781528280035117823bf62b2d94b4268d2f714f2ddf898f9  AdmissionImage.lean
 b1d2ba9afe45de7e11b1c7d9a7ac051d42a8b2ca37026c1b3c358df0d9564c5c  AdmissionFragment.lean
+11c8cd12e19454f544e8320ad2fd56129404353a029eb0c91be4f803b093c01b  CaseArgumentBridge.lean
 SHA256
         printf 'Admission replay requires the pinned fixture sources.\n' >&2
         exit 1
@@ -86,6 +87,7 @@ cat > "$proof_build/ReplayAxioms.lean" <<'LEAN'
 import Lean
 import AdmissionFragment
 import TableStateBridge
+import CaseArgumentBridge
 
 open Lean Elab Command LeanVM.Admission
 
@@ -93,7 +95,8 @@ run_cmd do
   let allowed := #[``propext, ``Classical.choice, ``Quot.sound]
   let env ← getEnv
   let entryPoints := #[``provisionalAdmissionEventually, ``stockTableLoadOfMappedFile,
-    ``admissionThenCall, ``stockAdmissionGuardPlacements, ``stockAdmissionFragmentPlacement]
+    ``admissionThenCall, ``stockAdmissionGuardPlacements, ``stockAdmissionFragmentPlacement,
+    ``stockCaseInputOfMappedFile]
   let proofModules ← entryPoints.mapM fun name => do
     let some (.thmInfo _) := env.find? name
       | throwError "Required replay entry point {name} must be a theorem"
@@ -126,7 +129,7 @@ fi
     lean_cmd=$2
     export LEAN_PATH="$proof_build${LEAN_PATH:+:$LEAN_PATH}"
     options=(--root="$proof_build" -DautoImplicit=false -DrelaxedAutoImplicit=false)
-    for module in StackTable AdmissionGuards TableStateBridge CallSetup AdmissionImage AdmissionFragment; do
+    for module in StackTable AdmissionGuards TableStateBridge CallSetup AdmissionImage AdmissionFragment CaseArgumentBridge; do
         "$lean_cmd" "${options[@]}" -o "$proof_build/$module.olean" "$proof_build/$module.lean"
     done
     "$lean_cmd" "${options[@]}" "$proof_build/ReplayAxioms.lean"

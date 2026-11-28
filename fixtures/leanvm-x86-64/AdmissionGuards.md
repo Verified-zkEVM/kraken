@@ -32,6 +32,38 @@ The pinned Lean replay checks that the constructor accepts the exact slice and r
 
 AI disclosure. Codex wrote `AdmissionFragment.lean`, the replay pin, and this section from the curated rows and the existing placement lemmas.
 
+## Read the stock case arguments
+
+The 11 case records start at virtual address `0x403000` and file offset `0x3000`, with a 32-byte stride. The first 16 bytes of each record hold its input pointer and length. Both stock ELFs put the records in a file-backed, read-only `PT_LOAD`. [Stock image checker and replay](https://github.com/Verified-zkEVM/kraken/tree/dcd2b13b1c0b2f42c29962cad454c1b244de0e20/fixtures/leanvm-x86-64)
+
+`stockCaseArgumentSpan` proves the address and file-offset calculation for each record. `stockCaseLoadsOfMappedFile` assumes that the file contains the stock words and that Kraken's memory reads return those file bytes. It derives unsigned `Mem.loadInt` results for both fields. `stockCaseInputOfMappedFile` supplies the call-setup pointer read when R12 selects the record.
+
+The linked proof must establish the loader's mapping and read permissions. It still needs the execution proof for the selector and the load into RDX before the range guard. The input bytes and P7's entry conditions for the region named by the pointer also remain open. [leanVM tracker](https://github.com/leanEthereum/leanVM/issues/881)
+
+The 176 argument bytes matched the Lean words in both images. Set `replay` to the stock replay's output directory. Both hashes should equal `4a6d830b92de6037d8444e1a16c094ab907a77d487df90aa63c975edf874e49b`.
+
+```sh
+for linker in ld.bfd ld.lld; do
+    for index in $(seq 0 10); do
+        dd if="$replay/$linker.elf" bs=1 skip=$((0x3000 + 32 * index)) count=16 status=none
+    done | sha256sum
+done
+```
+
+The stock replay checks the ELF segment layout and rejects a changed case-zero pointer. Set `checker` to `check-image.py` from the pinned stock replay. Run the length control once for each linker. Each run should fail with `case 0 pointer or length differs`.
+
+```sh
+linker=ld.bfd
+scratch=$(mktemp -d)
+changed="$scratch/$linker-length.elf"
+cp "$replay/$linker.elf" "$changed"
+printf '\001' | dd of="$changed" bs=1 seek=$((0x3008)) conv=notrunc status=none
+python3 -I "$checker" --stock-admission "$replay/stack-table.bin" "$changed" \
+    "$replay/$linker-small.elf" "$replay/$linker-inspect.elf"
+```
+
+AI disclosure. Codex wrote `CaseArgumentBridge.lean`, the runner changes, and this section from the linked case records and the call-setup proof. Codex extracted both images' argument words, checked their equality to the Lean words, and replayed separate pointer and length mutations.
+
 ## Replay the admission proof suite
 
 Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available. Run `replay-admission.sh` from a checkout of the replay branch or invoke it by absolute path. The proof sources are beside the script. [Call-setup proof at 6a482dd0](https://github.com/Verified-zkEVM/kraken/blob/6a482dd06ab1f3f24311689c92a97d2818cee153/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at f33d04ab](https://github.com/Verified-zkEVM/kraken/blob/f33d04ab9e1ef18aeb316398d1c6100d628a6b10/fixtures/leanvm-x86-64/TableStateBridge.lean)
@@ -40,7 +72,7 @@ Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available.
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh
 ```
 
-The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorems for the guards, table, call setup, admission image, and fragment. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
+The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorems for the guards, table, call setup, admission image, fragment, and case arguments. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
 
 The source hashes record the review baseline. When a proof source changes, update its hash in the same reviewed change. This replay checks the pinned sources and their axiom dependencies. Statement review and `lake comparator` replay are separate checks for the linked-code claim.
 
