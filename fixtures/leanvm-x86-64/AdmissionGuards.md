@@ -22,6 +22,16 @@ for linker in ld.bfd ld.lld; do
 done
 ```
 
+## Construct the stock admission fragment
+
+`stockAdmissionFragmentOfSlice` accepts exactly the 120 stock bytes and constructs an `Executable` from the 16 modeled rows. `stockAdmissionFragmentPlacement` proves that accepting the file slice yields all 16 directive lookups and both rejection-label bindings in `StockAdmissionPlacement`. The constructor uses the curated byte-to-directive pairs.
+
+The zero-filled gaps after the last instruction are data placeholders used to position the two labels. The theorem covers the fragment's layout. The full linked proof still needs the continuation code at both rejection labels and at the call target. It also needs the loader, runtime state, and permissions arguments for the actual ELF.
+
+The pinned Lean replay checks that the constructor accepts the exact slice and rejects a 119-byte prefix and a changed first byte. A separate replay checked acceptance of the extracted slice from both stock images.
+
+AI disclosure. Codex wrote `AdmissionFragment.lean`, the replay pin, and this section from the curated rows and the existing placement lemmas.
+
 ## Replay the admission proof suite
 
 Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available. Run `replay-admission.sh` from a checkout of the replay branch or invoke it by absolute path. The proof sources are beside the script. [Call-setup proof at 6a482dd0](https://github.com/Verified-zkEVM/kraken/blob/6a482dd06ab1f3f24311689c92a97d2818cee153/fixtures/leanvm-x86-64/CallSetup.lean) · [Table-state proof at f33d04ab](https://github.com/Verified-zkEVM/kraken/blob/f33d04ab9e1ef18aeb316398d1c6100d628a6b10/fixtures/leanvm-x86-64/TableStateBridge.lean)
@@ -30,7 +40,7 @@ Install the Lean version in `lean-toolchain` and make GNU `sha256sum` available.
 /path/to/kraken/fixtures/leanvm-x86-64/replay-admission.sh
 ```
 
-The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorem declarations in the guard, table, call-setup, and admission image modules. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
+The script checks the SHA-256 digests of the temporary source copies before compilation. It builds Kraken's parser and semantics locally and replays the exact fixture sources. The axiom audit checks public theorems for the guards, table, call setup, admission image, and fragment. The runner removes the temporary files on exit. Lake keeps its usual build output in the checkout.
 
 The source hashes record the review baseline. When a proof source changes, update its hash in the same reviewed change. This replay checks the pinned sources and their axiom dependencies. Statement review and `lake comparator` replay are separate checks for the linked-code claim.
 
